@@ -1,0 +1,84 @@
+{"TrainingDay": {
+    "date": "02/23/2024",
+    "blocks": [
+        {"block": {
+            "id": "1",
+            "blockIteration": {"Sets": 5},
+            "blockMeasure": "NoBlockMeasure",
+            "blockNotes": "",
+            "movements": [
+                {"movement": {
+                    "description": "clean",
+                    "notes": "Drop the bar after the first clean.",
+                    "labels": [
+                        "weightlifting"
+                    ],
+                    "targets": [],
+                    "iteration": {"IterateByReps": 2.0},
+                    "scalers": [
+                        {"ScaleRPE": 6.7}
+                    ],
+                    "measures": [
+                        {"MeasureWeight": 170}
+                    ],
+                    "submovements": []
+                }},
+                {"movement": {
+                    "description": "split jerk",
+                    "notes": "",
+                    "labels": [
+                        "weightlifting"
+                    ],
+                    "targets": [],
+                    "iteration": {"IterateByReps": 2},
+                    "scalers": [
+                        {"ScaleRPE": 6.7}
+                    ],
+                    "measures": [
+                        {"MeasureWeight": 170}
+                    ],
+                    "submovements": []
+                }}
+            ]
+        }},
+        {"block":{
+            "id": 2,
+            "blockIteration": {"amrap": "00:15:00"},
+            "blockMeasure": {"MeasureBlockReps": 131},
+            "blockNotes": "This was a super fun workout! Tried to cycle the CTB, but kept missing some reps, so did fast singles. I'll get there eventually. Went unbroken on the 10 and 15 OHS. Then 10 + 10, and my back blew up lol. On the 25 I did 5+5+5+10. I used the open standard on the shuttle runs. That last set of shuttle runs were hard af, because my back was literally cramped up lol. I was like duck walking as fast as I could lol.",
+            "movements": [
+                {"movement": {
+                    "description": "chest-to-bar pull-up",
+                    "notes": "",
+                    "labels": ["gymnastics"],
+                    "targets": [],
+                    "iteration": {"IterateByReps": 5},
+                    "scalers": [],
+                    "measures": [],
+                    "submovements": []
+                }},
+                {"movement": {
+                    "description": "shuttle run",
+                    "notes": "",
+                    "labels": ["monostructural"],
+                    "targets": [],
+                    "iteration": {"IterateByReps": 10},
+                    "scalers": [{"ScaleDistance": 7.62}],
+                    "measures": [],
+                    "submovements": []
+                }},
+                {"movement": {
+                    "description": "overhead squat",
+                    "notes": "",
+                    "labels": ["weightlifting"],
+                    "targets": [],
+                    "iteration": {"IterateByReps": 10},
+                    "scalers": [{"ScaleWeight": 95}, {"ScaleIncreaseRoundReps":  5}],
+                    "measures": [],
+                    "submovements": []
+                }}
+            ]
+        }}
+    ]
+}
+}
