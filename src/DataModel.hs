@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module DataModel where
-    import Data.Aeson
     import GHC.Generics
 
     data Time = Time {
@@ -71,32 +70,6 @@ module DataModel where
     } deriving (Generic, Show)
 
     data TrainingDay = TrainingDay {
-        date :: String,
+        date :: Date,
         blocks :: [Block]
     } deriving (Generic, Show)
-
-    instance ToJSON Measure where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON Iteration where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON Scalers where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON Movement where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON BlockIteration where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON BlockMeasure where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON Block where
-        toEncoding = genericToEncoding defaultOptions
-    instance ToJSON TrainingDay where
-        toEncoding = genericToEncoding defaultOptions
-
-    instance FromJSON Measure
-    instance FromJSON Iteration
-    instance FromJSON Scalers
-    instance FromJSON Movement
-    instance FromJSON BlockIteration
-    instance FromJSON BlockMeasure
-    instance FromJSON Block
-    instance FromJSON TrainingDay
