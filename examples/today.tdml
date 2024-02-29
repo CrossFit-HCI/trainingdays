@@ -1,0 +1,71 @@
+TrainingDay: 02/23/2024
+- block: 1
+  iteration:
+  - sets: 5
+  measure: none
+  notes: ""
+  movements:
+  - movement: "clean"
+    notes: "Drop the bar after the first clean."
+    labels:
+    - weightLiftings
+    targets: none
+    iteration:
+    - reps: 2
+    scalers:
+    - rpe: 6-7
+    measures:
+    - weight: 170
+    submovements: none
+- block: 2
+  iteration:
+  - amrap: 00:15:00
+  measure: 
+  - reps: 131
+  notes: "This was a super fun workout! 
+  
+          Tried to cycle the CTB, but kept missing some reps,
+          so did fast singles. I'll get there eventually. 
+          
+          Went unbroken on the 10 and 15 OHS. Then 10 + 10, 
+          and my back blew up lol. On the 25 I did 5+5+5+10. 
+          
+          I used the open standard on the shuttle runs. That 
+          last set of shuttle runs were hard af, because my 
+          back was literally cramped up lol. I was like duck 
+          walking as fast as I could lol.",
+  movements:
+  - movement: "chest-to-bar pull-up"
+    notes: ""
+    labels:
+    - gymnastics
+    targets: none
+    iteration:
+    - reps: 5
+    scalers: none
+    measures: none
+    submovements: none
+  - movement: "shuttle run"
+    notes: ""
+    labels:
+    - monostructural
+    targets: none
+    iteration:
+    - reps: 10
+    scalers: 
+    - distance: 7.62
+    measures: none
+    submovements: none
+  - movement: "overhead squat"
+    notes: ""
+    labels:
+    - weightlifting
+    targets: none
+    iteration:
+    - reps: 10
+    scalers: 
+    - weight: 95
+    - increaseReps: 5
+    measures: none
+    submovements: none
+  
