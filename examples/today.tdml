@@ -8,7 +8,7 @@ TrainingDay: 02/23/2024
   - movement: "clean"
     notes: "Drop the bar after the first clean."
     labels:
-    - weightLiftings
+    - "weightLifting"
     targets: none
     iteration:
     - reps: 2

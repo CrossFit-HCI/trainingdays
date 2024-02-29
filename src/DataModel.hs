@@ -42,7 +42,7 @@ module DataModel where
         labels :: [String],
         targets :: [String],
         iteration :: Iteration,
-        scalers :: [String],
+        scalers :: [Scalers],
         measures :: [Measure],
         submovements :: [Movement]
     } deriving (Generic, Show)
