@@ -43,37 +43,44 @@ TrainingDay
 Blocks : Block                { [$1] }
        | Block newline Blocks { $1:$3 }
 
-Block : DashOption block ':' Spaces Digits Spaces newline 
+BlockHeading : DashOption block ':' Spaces Digits Spaces { $5 }
+             | DashOption block ':' Spaces Digits        { $5 }
+
+Block : BlockHeading newline 
         BlockIteration newline 
         BlockMeasure newline 
         Notes newline 
-        BlockMovements { Block (digitsToInt $5) $8 $10 $12 $14  }
+        BlockMovements { Block (digitsToInt $1) $3 $5 $7 $9  }
 
-BlockIteration : space Spaces iteration ':' Spaces newline BlockIterator newline { $7 }
-BlockIterator : space DashOption sets ':' Spaces Digits { Sets (digitsToInt $6) }
+BlockIteration : space Spaces iteration ':' Spaces newline BlockIterator { $7 }
+               | space Spaces iteration ':' newline BlockIterator        { $6 }
+BlockIterator : space DashOption sets ':' Spaces Digits                  { Sets (digitsToInt $6) }
 
-BlockMeasure : space Spaces measure ':' Spaces newline Spaces BlockMeasurer newline { $8 }
+BlockMeasure : Spaces measure ':' Spaces newline Spaces BlockMeasurer { $7 }
+             | Spaces measure ':' newline Spaces BlockMeasurer        { $6 }
+             | Spaces measure ':' Spaces BlockMeasurer                { $5 }
 BlockMeasurer : none { NoBlockMeasure }
 
-BlockMovements : DashOption movements ':' Spaces newline Movements { $6 }
+BlockMovements : Spaces movements ':' Spaces newline Movements { $6 }
+               | Spaces movements ':' newline Movements        { $5 }
 
-Movements : Movement            { [$1]    }
-          | Movement Movements  { $1 : $2 }
+Movements : Movement                    { [$1]    }
+          | Movement newline Movements  { $1 : $3 }
 
-Movement : Spaces DashOption movement ':' Spaces string newline
+Movement : DashOption movement ':' Spaces string newline
              Notes  newline 
-             labels ':' Spaces Labels newline
-             targets ':' Spaces Targets newline
-             iteration ':' newline Iteration newline
-             scalers ':' Scalers newline
-             measures ':' newline Measures newline 
-             submovments ':' Submovements newline            
-             { Movement $6 $8 $13 $18 $23 $27 $32 $36 }
+             Spaces labels ':' Spaces Labels newline
+             Spaces targets ':' Spaces Targets newline
+             Spaces iteration ':' newline Iteration newline
+             Spaces scalers ':' Scalers newline
+             Spaces measures ':' newline Measures newline 
+             Spaces submovments ':' Submovements           
+             { Movement $5 $7 $13 $19 $25 $30 $36 $41 }
 
 Submovements : none       { [] }
              | Movements  { $1 } 
 
-Measures : newline Measure { [$2] }
+Measures : newline Measure                 { [$2] }
         | newline Measure newline Measures { $2 : $4 }
 
 {- Fill in the rest of the Measure's -}
@@ -105,13 +112,14 @@ Targets : newline target                { [$2] }
 target : DashOption Spaces string { $3 }
 
 
-Notes : space Spaces notes ':' Spaces string  { $6 }
+Notes : Spaces notes ':' Spaces string { $5 }
 
 DashOption : Spaces '-' space {}
+           | '-' space        {}
 
 Spaces
-    : space Spaces { TokenSpace }
-    | space        { TokenSpace }
+    : space        {}
+    | space Spaces {}
 
 Date 
     : Month '/' Day '/' Year { Date $3 $1 $5 }
@@ -205,5 +213,5 @@ digitsToInt ds = snd $ foldr (\d (r,i) -> (r + d * 10 * i,i+1)) (1,1) ds
 parseError :: [Token] -> a
 parseError ts = error $ "Parse error: " ++ (show ts)
 
-testParser = print . tdmlParser . lexer      
+testParser s = (readFile s) >>= (print . tdmlParser . lexer)
 }
