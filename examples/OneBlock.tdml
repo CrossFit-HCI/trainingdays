@@ -1,0 +1,19 @@
+TrainingDay: 02/23/2024
+- block: 1
+  iteration:
+  - sets: 5
+  measure: none
+  notes: ""
+  movements:
+  - movement: "clean"
+    notes: "Drop the bar after the first clean."
+    labels:
+    - "weightLifting"
+    targets: none
+    iteration:
+    - reps: 2
+    scalers:
+    - rpe: 6-7
+    measures:
+    - weight: 170
+    submovements: none
