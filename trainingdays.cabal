@@ -38,6 +38,7 @@ library
       aeson
     , array
     , base >=4.7 && <5
+    , mtl
   default-language: Haskell2010
 
 executable trainingdays-exe
@@ -53,6 +54,7 @@ executable trainingdays-exe
       aeson
     , array
     , base >=4.7 && <5
+    , mtl
     , trainingdays
   default-language: Haskell2010
 
@@ -70,5 +72,6 @@ test-suite trainingdays-test
       aeson
     , array
     , base >=4.7 && <5
+    , mtl
     , trainingdays
   default-language: Haskell2010

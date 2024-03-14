@@ -7,20 +7,20 @@ module DataModel where
     import GHC.Generics
     
     data Time = Time {
-        hours :: Int,
-        minutes :: Int,
-        seconds :: Int,
-        milliseconds :: Int
+        hours :: Integer,
+        minutes :: Integer,
+        seconds :: Integer,
+        milliseconds :: Integer
     } deriving (Generic, Show)
 
     data Date = Date {
-        day :: Int,
-        month :: Int,
-        year :: Int
+        day :: Integer,
+        month :: Integer,
+        year :: Integer
     } deriving (Generic, Show)
 
     data Measure = 
-          MeasureRepetitions Int
+          MeasureRepetitions Integer
         | MeasureTime String
         | MeasureDistance Float
         | MeasureCalories Int
@@ -28,14 +28,14 @@ module DataModel where
         deriving (Generic, Show)
 
     data Iteration = 
-        IterateByReps Int
-      | IterateByDist Int
+        IterateByReps Integer
+      | IterateByDist Integer
       deriving (Generic, Show)
 
     data Scalers = 
         ScaleDistance Float
       | ScaleWeight Float
-      | ScaleIncreaseRoundReps Int
+      | ScaleIncreaseRoundReps Integer
       | ScaleRPE (Int,Int)
       deriving (Generic, Show)
 
@@ -110,18 +110,18 @@ module DataModel where
           Amrap String
         | ForTime
         | ForTimeCap String
-        | Sets Int
+        | Sets Integer
         deriving (Generic, Show)
 
     data BlockMeasure =
-          MeasureBlockReps Int
+          MeasureBlockReps Integer
         | MeasureBlockWeight Float
         | MeasureBlockDistance Float
         | NoBlockMeasure
         deriving (Generic, Show)
 
     data Block = Block {
-        id :: Int,
+        id :: Integer,
         blockIteration :: BlockIteration,   
         blockMeasure :: BlockMeasure,
         blockNotes :: String,    
