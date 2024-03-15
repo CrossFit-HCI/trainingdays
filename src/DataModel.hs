@@ -36,7 +36,7 @@ module DataModel where
         ScaleDistance Float
       | ScaleWeight Float
       | ScaleIncreaseRoundReps Integer
-      | ScaleRPE (Int,Int)
+      | ScaleRPE (Integer,Integer)
       deriving (Generic, Show)
 
     data Movement = Movement {

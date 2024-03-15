@@ -24,12 +24,24 @@ lookahead t = do
                (t':_) -> t == t'
                _ -> False)
 
+scaler :: TokenParser (DM.Scalers)
+scaler = do
+     dashOption
+     rpe
+     colon
+     spaces
+     (low,high) <- range
+     if 0 < low && low < 10 &&
+        1 <= high && high <= 10
+     then return $ DM.ScaleRPE (low,high)
+     else get >>= parseError "Incorrect RPE range."
+
 range :: TokenParser (Integer,Integer)
 range = do
      low <- digits
      dash
      high <- digits
-     if 0 < low && low < high
+     if 0 <= low && low < high
      then return (low,high)
      else get >>= parseError "Range expected" 
 
@@ -341,6 +353,15 @@ reps = do
                put cs'
                return ()
           _ -> parseError "reps expected." cs
+
+rpe :: TokenParser ()
+rpe = do
+     cs <- get
+     case cs of
+          (TokenRPE:cs') -> do
+               put cs'
+               return ()
+          _ -> parseError "rpe expected." cs
 
 measures :: TokenParser ()
 measures = do
