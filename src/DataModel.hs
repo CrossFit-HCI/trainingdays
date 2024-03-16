@@ -24,7 +24,7 @@ module DataModel where
         | MeasureTime String
         | MeasureDistance Float
         | MeasureCalories Int
-        | MeasureWeight Float
+        | MeasureWeight Integer
         deriving (Generic, Show)
 
     data Iteration = 
