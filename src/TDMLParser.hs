@@ -4,18 +4,32 @@
 {-# HLINT ignore "Redundant bracket" #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
+{-# HLINT ignore "Use <$>" #-}
 module TDMLParser where
 import qualified DataModel as DM
-import Data.Char
+import TDMLLexer
+
 import Control.Monad.State.Lazy
 
 type TokenParser a = State [Token] a
 
 parser :: [Token] -> DM.TrainingDay
-parser = undefined
+parser = evalState trainingDayEntry
 
 testParser :: String -> TokenParser a -> (a,[Token])
 testParser s p = runState p $ lexer s
+
+testParserFile :: FilePath -> IO ()
+testParserFile s = do
+     f <- (readFile s)
+     let cs = lexer f
+     let t = parser cs
+     print t
+
+parseError :: String -> TokenParser a
+parseError msg = do 
+     cs <- get
+     error $ "Parse error: " ++ msg ++ "\nRemaining Tokens: " ++ (show cs)
 
 lookahead :: Token -> TokenParser Bool
 lookahead t = do
@@ -26,6 +40,12 @@ lookahead t = do
      lookahead' (TokenSpace:r) = lookahead' r
      lookahead' (t':_) = t == t'
      lookahead' _ = False
+
+dashOption :: TokenParser () 
+dashOption = do
+     spaces
+     dash
+     spaces
 
 dashEntry :: TokenParser () -> TokenParser a -> TokenParser a
 dashEntry nameToken elementParser = do
@@ -57,15 +77,136 @@ dashListParser :: TokenParser a -> TokenParser [a]
 dashListParser elementParser = do
      dashOption
      e <- elementParser
-     newline     
-     b <- lookahead TokenDash
-     if b 
+     n <- lookahead TokenNewline
+     if n
      then do
-          r <- dashListParser elementParser
-          return (e:r)
+          newline     
+          b <- lookahead TokenDash
+          if b 
+          then do
+               r <- dashListParser elementParser
+               return (e:r)
+          else return [e]
      else return [e]
 
-submovementsEntry :: TokenParser [DM.Movement]
+trainingDayEntry :: TokenParser DM.TrainingDay
+trainingDayEntry = do
+     trainingDay
+     colon
+     spaces
+     d <- date
+     newline
+     bs <- dashListParser blockEntry
+     return $ DM.TrainingDay d bs
+
+blockEntry :: TokenParser DM.Block
+blockEntry = do
+     block
+     colon
+     spaces
+     blockID <- digits
+     newline
+     blockIteration <- blockIterationEntry
+     blockMeasure <- blockMeasureEntry
+     blockNotes <- notesEntry
+     blockMovements <- movementsEntry
+     return $ DM.Block blockID blockIteration blockMeasure blockNotes blockMovements
+
+blockIterationEntry :: TokenParser DM.BlockIteration
+blockIterationEntry = do
+     d <- dashEntry iteration iterationElement
+     return $ DM.Sets d
+  where
+     iterationElement = do
+          sets
+          colon
+          spaces
+          digits
+
+blockMeasureEntry :: TokenParser DM.BlockMeasure
+blockMeasureEntry = do
+     spaces
+     measure
+     colon
+     spaces
+     none
+     newline
+     return DM.NoBlockMeasure
+
+movementsEntry :: TokenParser [DM.Movement]
+movementsEntry = do
+     spaces
+     movements
+     colon
+     spaces
+     newline
+     movementsEntryList []
+
+movementsEntryList :: [DM.Movement] -> TokenParser [DM.Movement]
+movementsEntryList acc = do
+     m <- movementEntry
+     b <- lookahead TokenDash
+     if b then movementsEntryList (m:acc)
+          else return acc
+
+movementEntry :: TokenParser DM.Movement
+movementEntry = do
+     dashOption
+     movement
+     colon
+     spaces
+     description <- string
+     newline
+     ps <- movementParamList [DM.DescriptionParam description]
+     let maybeMovement = DM.fromMovementParams ps
+     case maybeMovement of
+          Just m -> return m
+          Nothing -> parseError "Incomplete movement"
+
+movementParamList :: [DM.MovementParams] -> TokenParser [DM.MovementParams]
+movementParamList acc = do
+     spaces
+     cs <- get
+     case cs of
+          (t:_) -> if t `elem` paramTokens
+                   then do p <- movementParam
+                           movementParamList (p:acc)
+                   else return acc
+          _ -> return acc
+
+  where
+     paramTokens = [TokenNotes, TokenLabels,TokenTargets,
+                    TokenIteration, TokenScalers, TokenMeasures, 
+                    TokenSubmovements]
+
+movementParam :: TokenParser DM.MovementParams
+movementParam = do
+     cs <- get
+     case cs of
+          (TokenNotes:_) -> do 
+               n <- notesEntry
+               return $ DM.NotesParam n
+          (TokenLabels:_) -> do
+               l <- labelsEntry
+               return $ DM.LabelsParam l
+          (TokenTargets:_) -> do
+               t <- targetsEntry
+               return $ DM.TargetsParam t
+          (TokenIteration:_) -> do
+               i <- iterationEntry
+               return $ DM.IterationParam i
+          (TokenScalers:_) -> do
+               s <- scalersEntry
+               return $ DM.ScalersParam s
+          (TokenMeasures:_) -> do
+               m <- measuresEntry
+               return $ DM.MeasuresParam m
+          (TokenSubmovements:_) -> do
+               v <- submovementsEntry
+               return $ DM.SubmovementsParam v
+          _ -> parseError "Incomplete movement specification."
+
+submovementsEntry :: TokenParser [[DM.MovementParams]]
 submovementsEntry = do
      spaces
      submovements
@@ -75,8 +216,8 @@ submovementsEntry = do
      newline
      return []
 
-measureEntry :: TokenParser [DM.Measure]
-measureEntry = dashListEntry measures measureElement
+measuresEntry :: TokenParser [DM.Measure]
+measuresEntry = dashListEntry measures measureElement
 
 measureElement :: TokenParser DM.Measure
 measureElement = do
@@ -87,10 +228,10 @@ measureElement = do
      return $ DM.MeasureWeight d
 
 scalersEntry :: TokenParser [DM.Scalers]
-scalersEntry = dashListEntry scalers scaler
+scalersEntry = dashListEntry scalers scalerElement
 
-scaler :: TokenParser (DM.Scalers)
-scaler = do
+scalerElement :: TokenParser (DM.Scalers)
+scalerElement = do
      rpe
      colon
      spaces
@@ -98,7 +239,7 @@ scaler = do
      if 0 < low && low < 10 &&
         1 <= high && high <= 10
      then return $ DM.ScaleRPE (low,high)
-     else get >>= parseError "Incorrect RPE range."
+     else parseError "Incorrect RPE range."
 
 range :: TokenParser (Integer,Integer)
 range = do
@@ -107,7 +248,7 @@ range = do
      high <- digits
      if 0 <= low && low < high
      then return (low,high)
-     else get >>= parseError "Range expected" 
+     else parseError "Range expected" 
 
 iterationEntry :: TokenParser DM.Iteration
 iterationEntry = dashEntry iteration iterationElement
@@ -120,26 +261,26 @@ iterationEntry = dashEntry iteration iterationElement
                spaces
                d <- digits
                return $ DM.IterateByReps d
-          else get >>= parseError "Expecting iteration entry."
+          else parseError "Expecting iteration entry."
 
 labelsEntry :: TokenParser [String]
 labelsEntry = dashListEntry labels string
 
 targetsEntry :: TokenParser [String]
-targetsEntry = dashListEntry targets string
+targetsEntry = do
+     ts <- dashListEntry targets string
+     newline
+     return ts
 
 notesEntry :: TokenParser String
 notesEntry = do
+     spaces
      notes
      colon
      spaces
-     string
-
-dashOption :: TokenParser () 
-dashOption = do
-     spaces
-     dash
-     spaces
+     s <- string
+     newline
+     return s
 
 spaces :: TokenParser ()
 spaces = do
@@ -164,7 +305,7 @@ month = do
      if n1 >= 0 && n1 <= 9 && 
         n2 >= 1 && n2 <= 9
      then return $ digitsToInt [n1,n2]
-     else get >>= parseError "Expecting a month." 
+     else parseError "Expecting a month." 
 
 day :: TokenParser Integer
 day = do
@@ -173,7 +314,7 @@ day = do
      if n1 >= 0 && n1 <= 9 && 
         n2 >= 1 && n2 <= 9
      then return $ digitsToInt [n1,n2]
-     else get >>= parseError "Expecting a day." 
+     else parseError "Expecting a day." 
 
 year :: TokenParser Integer
 year = do
@@ -186,14 +327,14 @@ year = do
         n3 >= 0 && n3 <= 9 &&
         n4 >= 0 && n2 <= 9
      then return $ digitsToInt [n1,n2,n3,n4]
-     else get >>= parseError "Expecting a year." 
+     else parseError "Expecting a year." 
 
 digits :: TokenParser Integer
 digits = do
      cs <- get
      case cs of
           (TokenDigit _:_) -> digitsAcc []
-          _ -> parseError "Expecting digits." cs 
+          _ -> parseError "Expecting digits."
  where
      digitsAcc :: [Integer] -> TokenParser Integer
      digitsAcc acc = do
@@ -211,7 +352,7 @@ digit = do
           ((TokenDigit d):cs') -> do
                put cs'
                return d
-          _ -> parseError "Digit expected." cs
+          _ -> parseError "Digit expected."
 
 backslash :: TokenParser ()
 backslash = do
@@ -220,7 +361,7 @@ backslash = do
           (TokenBackslash:cs') -> do
                put cs'
                return ()
-          _ -> parseError "Backslash expected." cs
+          _ -> parseError "Backslash expected."
 
 colon :: TokenParser ()
 colon = do
@@ -229,7 +370,7 @@ colon = do
           (TokenColon:cs') -> do
                put cs'
                return ()
-          _ -> parseError "Colon expected." cs
+          _ -> parseError "Colon expected."
 
 none :: TokenParser ()
 none = do
@@ -238,7 +379,7 @@ none = do
           (TokenNone:cs') -> do
                put cs'
                return ()
-          _ -> parseError "none expected." cs
+          _ -> parseError "none expected."
 
 newline :: TokenParser ()
 newline = do
@@ -248,7 +389,7 @@ newline = do
           (TokenNewline:cs') -> do
                put cs'
                return ()
-          _ -> parseError "newline expected." cs
+          _ -> parseError "newline expected."
 
 space :: TokenParser ()
 space = do
@@ -257,7 +398,7 @@ space = do
           (TokenSpace:cs') -> do
                put cs'
                return ()
-          _ -> parseError "space expected." cs
+          _ -> parseError "space expected."
 
 trainingDay :: TokenParser ()
 trainingDay = do
@@ -266,7 +407,7 @@ trainingDay = do
           (TokenTrainingDay:cs') -> do
                put cs'
                return ()
-          _ -> parseError "TrainingDay expected." cs
+          _ -> parseError "TrainingDay expected."
 
 block :: TokenParser ()
 block = do
@@ -275,7 +416,7 @@ block = do
           (TokenBlock:cs') -> do
                put cs'
                return ()
-          _ -> parseError "block expected." cs
+          _ -> parseError "block expected."
 
 sets :: TokenParser ()
 sets = do
@@ -284,7 +425,7 @@ sets = do
           (TokenSets:cs') -> do
                put cs'
                return ()
-          _ -> parseError "sets expected." cs
+          _ -> parseError "sets expected."
 
 iteration :: TokenParser ()
 iteration = do
@@ -293,7 +434,7 @@ iteration = do
           (TokenIteration:cs') -> do
                put cs'
                return ()
-          _ -> parseError "iteration expected." cs
+          _ -> parseError "iteration expected."
 
 measure :: TokenParser ()
 measure = do
@@ -302,7 +443,7 @@ measure = do
           (TokenMeasure:cs') -> do
                put cs'
                return ()
-          _ -> parseError "measure expected." cs
+          _ -> parseError "measure expected."
 
 notes :: TokenParser ()
 notes = do
@@ -311,7 +452,7 @@ notes = do
           (TokenNotes:cs') -> do
                put cs'
                return ()
-          _ -> parseError "notes expected." cs
+          _ -> parseError "notes expected."
 
 string :: TokenParser String
 string = do
@@ -320,7 +461,7 @@ string = do
           (TokenString s:cs') -> do
                put cs'
                return s
-          _ -> parseError "string expected." cs
+          _ -> parseError "string expected."
 
 movements :: TokenParser ()
 movements = do
@@ -329,7 +470,7 @@ movements = do
           (TokenMovements:cs') -> do
                put cs'
                return ()
-          _ -> parseError "movements expected." cs
+          _ -> parseError "movements expected."
 
 movement :: TokenParser ()
 movement = do
@@ -338,7 +479,7 @@ movement = do
           (TokenMovement:cs') -> do
                put cs'
                return ()
-          _ -> parseError "movement expected." cs
+          _ -> parseError "movement expected."
 
 scalers :: TokenParser ()
 scalers = do
@@ -347,7 +488,7 @@ scalers = do
           (TokenScalers:cs') -> do
                put cs'
                return ()
-          _ -> parseError "scalers expected." cs
+          _ -> parseError "scalers expected."
 
 
 labels :: TokenParser ()
@@ -357,7 +498,7 @@ labels = do
           (TokenLabels:cs') -> do
                put cs'
                return ()
-          _ -> parseError "labels expected." cs
+          _ -> parseError "labels expected."
 
 targets :: TokenParser ()
 targets = do
@@ -366,7 +507,7 @@ targets = do
           (TokenTargets:cs') -> do
                put cs'
                return ()
-          _ -> parseError "notes expected." cs
+          _ -> parseError "notes expected."
 
 reps :: TokenParser ()
 reps = do
@@ -375,7 +516,7 @@ reps = do
           (TokenReps:cs') -> do
                put cs'
                return ()
-          _ -> parseError "reps expected." cs
+          _ -> parseError "reps expected."
 
 rpe :: TokenParser ()
 rpe = do
@@ -384,7 +525,7 @@ rpe = do
           (TokenRPE:cs') -> do
                put cs'
                return ()
-          _ -> parseError "rpe expected." cs
+          _ -> parseError "rpe expected."
 
 measures :: TokenParser ()
 measures = do
@@ -393,7 +534,7 @@ measures = do
           (TokenMeasures:cs') -> do
                put cs'
                return ()
-          _ -> parseError "measures expected." cs
+          _ -> parseError "measures expected."
 
 weight :: TokenParser ()
 weight = do
@@ -402,7 +543,7 @@ weight = do
           (TokenWeight:cs') -> do
                put cs'
                return ()
-          _ -> parseError "weight expected." cs
+          _ -> parseError "weight expected."
 
 submovements :: TokenParser ()
 submovements = do
@@ -411,7 +552,7 @@ submovements = do
           (TokenSubmovements:cs') -> do
                put cs'
                return ()
-          _ -> parseError "submovements expected." cs
+          _ -> parseError "submovements expected."
 
 dash :: TokenParser ()
 dash = do
@@ -420,77 +561,4 @@ dash = do
           (TokenDash:cs') -> do
                put cs'
                return ()
-          _ -> parseError "dash expected." cs
-
-data Token = TokenDash
-     | TokenBackslash 
-     | TokenColon 
-     | TokenNone 
-     | TokenNewline
-     | TokenSpace
-     | TokenDigit Integer
-     | TokenTrainingDay
-     | TokenBlock
-     | TokenSets
-     | TokenIteration
-     | TokenMeasure
-     | TokenNotes
-     | TokenString String
-     | TokenMovements
-     | TokenMovement
-     | TokenLabels
-     | TokenTargets
-     | TokenReps
-     | TokenScalers
-     | TokenRPE
-     | TokenMeasures
-     | TokenWeight
-     | TokenSubmovements
-     deriving (Show,Eq)
-
-lexer :: String -> [Token]
-lexer [] = []
-lexer (c:cs)
-     | isDigit c = TokenDigit (read [c]) : lexer cs
-lexer ('\t':cs) = TokenSpace : lexer cs
-lexer (' ':cs) = TokenSpace : lexer cs
-lexer ('\n':cs) = TokenNewline : lexer cs
-lexer ('-':cs) = TokenDash : lexer cs
-lexer ('"':cs) = lexString cs
-lexer (':':cs) = TokenColon : lexer cs
-lexer ('/':cs) = TokenBackslash : lexer cs
-lexer ('n':'o':'n':'e':cs) = TokenNone : lexer cs
-lexer ('T':'r':'a':'i':'n':'i':'n':'g':'D':'a':'y':cs) = TokenTrainingDay : lexer cs
-lexer ('b':'l':'o':'c':'k':cs) = TokenBlock : lexer cs
-lexer ('s':'e':'t':'s':cs) = TokenSets : lexer cs
-lexer ('s':'c':'a':'l':'e':'r':'s':cs) = TokenScalers : lexer cs
-lexer ('i':'t':'e':'r':'a':'t':'i':'o':'n':cs) = TokenIteration : lexer cs
-lexer ('m':'e':'a':'s':'u':'r':'e':'s':cs) = TokenMeasures : lexer cs
-lexer ('m':'e':'a':'s':'u':'r':'e':cs) = TokenMeasure : lexer cs
-lexer ('n':'o':'t':'e':'s':cs) = TokenNotes : lexer cs
-lexer ('m':'o':'v':'e':'m':'e':'n':'t':'s':cs) = TokenMovements : lexer cs
-lexer ('m':'o':'v':'e':'m':'e':'n':'t':cs) = TokenMovement : lexer cs
-lexer ('l':'a':'b':'e':'l':'s':cs) = TokenLabels : lexer cs
-lexer ('t':'a':'r':'g':'e':'t':'s':cs) = TokenTargets : lexer cs
-lexer ('r':'e':'p':'s':cs) = TokenReps : lexer cs
-lexer ('r':'p':'e':cs) = TokenRPE : lexer cs
-lexer ('w':'e':'i':'g':'h':'t':cs) = TokenWeight : lexer cs
-lexer ('s':'u':'b':'m':'o':'v':'e':'m':'e':'n':'t':'s':cs) = TokenSubmovements : lexer cs
-lexer cs = error $ "Lexing Error: Uncrecognized symbol"++cs
-
-lexString :: String -> [Token]
-lexString cs = case r of
-     [] -> [TokenString (clean s)]
-     _ -> TokenString (clean s) : lexer (tail r)
-     where 
-          (s,r) = span (\c -> (c /= '"')) cs
-          clean [] = []
-          clean ('\n':' ':' ':cs) = clean ('\n':' ':cs)
-          clean (c:cs) = c : clean cs
-
-digitsToInt :: [Integer] -> Integer
-digitsToInt [d] = d
-digitsToInt ds = fst $ foldr (\d (r,i) -> (r + (d * (10^i)),i+1)) (0,0) ds
-
-parseError :: String -> [Token] -> a
-parseError msg ts = error $ "Parse error: " ++ msg ++ "\nRemaining Tokens: " ++ (show ts)
+          _ -> parseError "dash expected."
