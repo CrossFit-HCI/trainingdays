@@ -11,20 +11,20 @@ import TDMLLexer
 
 import Control.Monad.State.Lazy
 
-type TokenParser a = State [Token] a
+type TokenParser a = StateT [Token] IO a
 
-parser :: [Token] -> DM.TrainingDay
-parser = evalState trainingDayEntry
+parser :: [Token] -> IO DM.TrainingDay
+parser = evalStateT trainingDayEntry
 
-testParser :: String -> TokenParser a -> (a,[Token])
-testParser s p = runState p $ lexer s
+testParser :: TokenParser a -> String -> IO (a,[Token])
+testParser p s = runStateT p $ lexer s
 
 testParserFile :: FilePath -> IO ()
 testParserFile s = do
      f <- (readFile s)
      let cs = lexer f
      let t = parser cs
-     print t
+     t >>= print
 
 parseError :: String -> TokenParser a
 parseError msg = do 
@@ -32,14 +32,21 @@ parseError msg = do
      error $ "Parse error: " ++ msg ++ "\nRemaining Tokens: " ++ (show cs)
 
 lookahead :: Token -> TokenParser Bool
-lookahead t = do
+lookahead = lookaheadN 0
+
+lookahead2 :: Token -> TokenParser Bool
+lookahead2 = lookaheadN 1
+
+lookaheadN :: Int -> Token -> TokenParser Bool
+lookaheadN n t = do
      cs <- get
-     return $ lookahead' cs
+     return $ lookahead' n cs
  where
-     lookahead' :: [Token] -> Bool     
-     lookahead' (TokenSpace:r) = lookahead' r
-     lookahead' (t':_) = t == t'
-     lookahead' _ = False
+     lookahead' :: Int -> [Token] -> Bool     
+     lookahead' n (TokenSpace:r) = lookahead' n r
+     lookahead' n (t':r) | n > 0 = lookahead' (n-1) r
+                         | n == 0 = t == t'
+     lookahead' _ _ = False
 
 dashOption :: TokenParser () 
 dashOption = do
@@ -96,8 +103,26 @@ trainingDayEntry = do
      spaces
      d <- date
      newline
-     bs <- dashListParser blockEntry
+     bs <- blockList
      return $ DM.TrainingDay d bs
+
+blockList :: TokenParser [DM.Block]
+blockList = blockList' []
+  where
+     blockList' :: [DM.Block] -> TokenParser [DM.Block]
+     blockList' acc = do
+          b <- lookahead2 TokenBlock  
+          if b 
+          then do
+               dashOption
+               bl <- blockEntry
+               n <- lookahead TokenNewline
+               if n
+               then do
+                    newline
+                    blockList' (bl:acc)
+               else blockList' (bl:acc)
+          else return acc
 
 blockEntry :: TokenParser DM.Block
 blockEntry = do
@@ -142,12 +167,14 @@ movementsEntry = do
      newline
      movementsEntryList []
 
+-- Checking for a TokenDash on the lookahead doesn't catch the 
+-- last movement which has a "- block" after.
 movementsEntryList :: [DM.Movement] -> TokenParser [DM.Movement]
 movementsEntryList acc = do
      m <- movementEntry
-     b <- lookahead TokenDash
+     b <- lookahead2 TokenMovement
      if b then movementsEntryList (m:acc)
-          else return acc
+          else return (m:acc)
 
 movementEntry :: TokenParser DM.Movement
 movementEntry = do
