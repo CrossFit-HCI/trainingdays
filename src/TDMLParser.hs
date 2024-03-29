@@ -132,7 +132,7 @@ blockEntry = do
      blockID <- digits
      newline
      blockIteration <- blockIterationEntry
-     blockMeasure <- blockMeasureEntry
+     blockMeasure <- blockMeasure
      blockNotes <- notesEntry
      blockMovements <- movementsEntry
      return $ DM.Block blockID blockIteration blockMeasure blockNotes blockMovements
@@ -174,15 +174,49 @@ blockIterationEntry = do
                          return $ DM.ForTimeCap t
 
 
-blockMeasureEntry :: TokenParser DM.BlockMeasure
-blockMeasureEntry = do
-     spaces
-     measure
-     colon
-     spaces
-     none
-     newline
-     return DM.NoBlockMeasure
+blockMeasure :: TokenParser DM.BlockMeasure
+blockMeasure = do
+          spaces
+          measure
+          colon
+          spaces
+          isNewline <- lookahead TokenNewline
+          if isNewline
+          then do
+               newline          
+               dashOption
+               m <- blockMeasureEntry
+               newline
+               return m
+          else do
+               none
+               newline
+               return DM.NoBlockMeasure
+  where
+     blockMeasureEntry = do
+          isReps <- lookahead TokenReps
+          if isReps
+          then do
+               reps
+               colon
+               spaces
+               r <- digits
+               return $ DM.MeasureBlockReps r
+          else do
+               isWeight <- lookahead TokenWeight
+               if isWeight
+               then do
+                    weight
+                    colon
+                    spaces
+                    w <- digits
+                    return $ DM.MeasureBlockWeight $ fromInteger w
+               else do
+                    distance
+                    colon
+                    spaces
+                    d <- digits
+                    return $ DM.MeasureBlockDistance $ fromInteger d
 
 movementsEntry :: TokenParser [DM.Movement]
 movementsEntry = do
@@ -657,3 +691,12 @@ fortimecap = do
                put cs'
                return ()
           _ -> parseError "fortimecap expected."
+
+distance :: TokenParser () 
+distance = do
+     cs <- get
+     case cs of
+          (TokenDistance:cs') -> do
+               put cs'
+               return ()
+          _ -> parseError "distance expected."

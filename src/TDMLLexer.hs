@@ -26,11 +26,12 @@ data Token = TokenDash
      | TokenLabels
      | TokenTargets
      | TokenReps
+     | TokenDistance
      | TokenScalers
      | TokenRPE
      | TokenMeasures
      | TokenWeight
-     | TokenSubmovements
+     | TokenSubmovements     
      deriving (Show,Eq)
 
 
@@ -46,6 +47,7 @@ lexer ('"':cs) = lexString cs
 lexer (':':cs) = TokenColon : lexer cs
 lexer ('/':cs) = TokenBackslash : lexer cs
 lexer ('a':'m':'r':'a':'p':cs) = TokenAmrap : lexer cs
+lexer ('d':'i':'s':'t':'a':'n':'c':'e':cs) = TokenDistance : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':'c':'a':'p':cs) = TokenForTimeCap : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':cs) = TokenForTime : lexer cs
 lexer ('n':'o':'n':'e':cs) = TokenNone : lexer cs
