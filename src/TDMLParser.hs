@@ -139,14 +139,40 @@ blockEntry = do
 
 blockIterationEntry :: TokenParser DM.BlockIteration
 blockIterationEntry = do
-     d <- dashEntry iteration iterationElement
-     return $ DM.Sets d
+     dashEntry iteration iterationElement
   where
      iterationElement = do
-          sets
-          colon
-          spaces
-          digits
+          isSets <- lookahead TokenSets
+          if isSets
+          then do
+               sets
+               colon
+               spaces
+               d <- digits
+               return $ DM.Sets d
+          else do
+               isAmrap <- lookahead TokenAmrap
+               if isAmrap
+               then do
+                    amrap
+                    colon
+                    spaces
+                    t <- time
+                    return $ DM.Amrap t
+               else do 
+                    isForTime <- lookahead TokenForTime
+                    if isForTime
+                    then do
+                         fortime
+                         spaces
+                         return $ DM.ForTime
+                    else do
+                         fortimecap
+                         colon
+                         spaces
+                         t <- time
+                         return $ DM.ForTimeCap t
+
 
 blockMeasureEntry :: TokenParser DM.BlockMeasure
 blockMeasureEntry = do
@@ -315,6 +341,21 @@ spaces = do
      case cs of
           (TokenSpace:r) -> put r >> spaces
           _ -> return ()
+
+time :: TokenParser DM.Time
+time = do
+     h1 <- digit
+     h2 <- digit
+     colon
+     m1 <- digit
+     m2 <- digit
+     colon
+     s1 <- digit
+     s2 <- digit
+     let h = digitsToInt [h1,h2]
+     let m = digitsToInt [m1,m2]
+     let s = digitsToInt [s1,s2]
+     return $ DM.Time h m s 0
 
 date :: TokenParser DM.Date
 date = do
@@ -589,3 +630,30 @@ dash = do
                put cs'
                return ()
           _ -> parseError "dash expected."
+
+amrap :: TokenParser ()
+amrap = do
+     cs <- get
+     case cs of
+          (TokenAmrap:cs') -> do
+               put cs'
+               return ()
+          _ -> parseError "amrap expected."
+
+fortime :: TokenParser () 
+fortime = do
+     cs <- get
+     case cs of
+          (TokenForTime:cs') -> do
+               put cs'
+               return ()
+          _ -> parseError "fortime expected."
+
+fortimecap :: TokenParser () 
+fortimecap = do
+     cs <- get
+     case cs of
+          (TokenForTimeCap:cs') -> do
+               put cs'
+               return ()
+          _ -> parseError "fortimecap expected."

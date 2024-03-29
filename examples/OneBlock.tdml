@@ -4,7 +4,7 @@ TrainingDay: 02/23/2024
   - sets: 5
   measure: none
   notes: ""
-  movements:
+  movements: 
   - movement: "clean"
     notes: "Drop the bar after the first clean."
     labels:
@@ -28,7 +28,7 @@ TrainingDay: 02/23/2024
     - rpe: 6-7
     measures:
     - weight: 170
-    submovements: none
+    submovements: none 
 - block: 2
   iteration:
   - sets: 5

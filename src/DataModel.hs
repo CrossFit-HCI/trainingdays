@@ -107,9 +107,9 @@ module DataModel where
             findSubmovementsParam (_:ps) = findSubmovementsParam ps
 
     data BlockIteration =
-          Amrap String
+          Amrap Time
         | ForTime
-        | ForTimeCap String
+        | ForTimeCap Time
         | Sets Integer
         deriving (Generic, Show)
 
