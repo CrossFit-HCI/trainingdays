@@ -1,5 +1,8 @@
 module TDMLLexer (Token(..),
+                  TokenData(..),
                   lexer,
+                  getTokenData,
+                  compareTokens,
                   digitsToInt) where
 
 import Data.Char
@@ -34,6 +37,19 @@ data Token = TokenDash
      | TokenSubmovements     
      deriving (Show,Eq)
 
+compareTokens :: Token -> Token -> Bool
+compareTokens (TokenString _) (TokenString _) = True
+compareTokens (TokenDigit _) (TokenDigit _) = True
+compareTokens t1 t2 = t1 == t2
+
+data TokenData = StringData String 
+     | IntegerData Integer
+     | NoData
+
+getTokenData :: Token -> TokenData
+getTokenData (TokenDigit d) = IntegerData d
+getTokenData (TokenString s) = StringData s
+getTokenData _ = NoData
 
 lexer :: String -> [Token]
 lexer [] = []

@@ -4,7 +4,7 @@ TrainingDay: 02/23/2024
   - sets: 5
   measure: none
   notes: ""
-  movements: 
+  movements:
   - movement: "clean"
     notes: "Drop the bar after the first clean."
     labels:
@@ -23,7 +23,7 @@ TrainingDay: 02/23/2024
     - "weightLifting"
     targets: none
     iteration:
-    - reps: 2
+    - reps: 45
     scalers:
     - rpe: 6-7
     measures:

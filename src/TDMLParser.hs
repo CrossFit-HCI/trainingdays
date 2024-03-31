@@ -10,9 +10,9 @@ import qualified DataModel as DM
 import TDMLLexer
 
 import Control.Monad.State.Lazy
+import Data.Functor
 
 type TokenParser a = StateT [Token] IO a
-
 parser :: [Token] -> IO DM.TrainingDay
 parser = evalStateT trainingDayEntry
 
@@ -27,7 +27,7 @@ testParserFile s = do
      t >>= print
 
 parseError :: String -> TokenParser a
-parseError msg = do 
+parseError msg = do
      cs <- get
      error $ "Parse error: " ++ msg ++ "\nRemaining Tokens: " ++ (show cs)
 
@@ -42,13 +42,54 @@ lookaheadN n t = do
      cs <- get
      return $ lookahead' n cs
  where
-     lookahead' :: Int -> [Token] -> Bool     
+     lookahead' :: Int -> [Token] -> Bool
      lookahead' n (TokenSpace:r) = lookahead' n r
      lookahead' n (t':r) | n > 0 = lookahead' (n-1) r
-                         | n == 0 = t == t'
+                         | n == 0 = compareTokens t t'
      lookahead' _ _ = False
 
-dashOption :: TokenParser () 
+infixr <|>
+(<|>) :: (Token, TokenParser a) -> TokenParser a -> TokenParser a
+(<|>) (t1,parser1) parser2 = do
+     isT1 <- lookahead t1
+     if isT1
+     then parser1
+     else parser2
+
+tokenParser :: Token -> String -> TokenParser TokenData
+tokenParser t msg = do
+     cs <- get
+     case cs of
+          (t':cs') -> 
+               if (compareTokens t t') 
+               then do                    
+                    put cs'
+                    return . getTokenData $ t'
+               else parseError msg
+          _ -> parseError msg
+
+tokenUnitParser :: Token -> String -> TokenParser ()
+tokenUnitParser t msg = do
+     u <- tokenParser t msg
+     case u of
+          NoData -> return ()
+          _ -> parseError msg
+
+tokenStringParser :: (String -> Token) -> String -> TokenParser String
+tokenStringParser t msg = do
+     u <- tokenParser (t "") msg
+     case u of
+          StringData s -> return s
+          _ -> parseError msg
+
+tokenIntegerParser :: (Integer -> Token) -> String -> TokenParser Integer
+tokenIntegerParser t msg = do
+     u <- tokenParser (t 0) msg
+     case u of
+          IntegerData d -> return d
+          _ -> parseError msg
+
+dashOption :: TokenParser ()
 dashOption = do
      spaces
      dash
@@ -75,6 +116,7 @@ dashListEntry listNameToken elementParser = do
      b <- lookahead TokenNone
      if b then do
           none
+          newline
           return []
      else do
           newline
@@ -87,20 +129,25 @@ dashListParser elementParser = do
      n <- lookahead TokenNewline
      if n
      then do
-          newline     
+          newline
           b <- lookahead TokenDash
-          if b 
+          if b
           then do
                r <- dashListParser elementParser
                return (e:r)
           else return [e]
      else return [e]
 
-trainingDayEntry :: TokenParser DM.TrainingDay
-trainingDayEntry = do
-     trainingDay
+colonEntryParser :: TokenParser () -> TokenParser a -> TokenParser a
+colonEntryParser entryParser valueParser = do
+     spaces
+     entryParser
      colon
      spaces
+     valueParser
+
+trainingDayEntry :: TokenParser DM.TrainingDay
+trainingDayEntry = colonEntryParser trainingDay $ do
      d <- date
      newline
      bs <- blockList
@@ -111,144 +158,111 @@ blockList = blockList' []
   where
      blockList' :: [DM.Block] -> TokenParser [DM.Block]
      blockList' acc = do
-          b <- lookahead2 TokenBlock  
-          if b 
+          b <- lookahead2 TokenBlock
+          if b
           then do
                dashOption
-               bl <- blockEntry
+               bl <- blockEntry               
                n <- lookahead TokenNewline
                if n
-               then do
+               then do                    
                     newline
                     blockList' (bl:acc)
                else blockList' (bl:acc)
           else return acc
 
 blockEntry :: TokenParser DM.Block
-blockEntry = do
-     block
-     colon
-     spaces
-     blockID <- digits
-     newline
-     blockIteration <- blockIterationEntry
-     blockMeasure <- blockMeasure
-     blockNotes <- notesEntry
-     blockMovements <- movementsEntry
-     return $ DM.Block blockID blockIteration blockMeasure blockNotes blockMovements
+blockEntry = colonEntryParser block $ do
+          blockID <- digits     
+          newline
+          blockIteration <- blockIterationEntry
+          blockMeasure <- blockMeasure
+          blockNotes <- notesEntry          
+          blockMovements <- movementsEntry          
+          return $ DM.Block blockID blockIteration blockMeasure blockNotes blockMovements
 
 blockIterationEntry :: TokenParser DM.BlockIteration
-blockIterationEntry = do
-     dashEntry iteration iterationElement
+blockIterationEntry = dashEntry iteration iterationElement
   where
-     iterationElement = do
-          isSets <- lookahead TokenSets
-          if isSets
-          then do
-               sets
-               colon
-               spaces
-               d <- digits
-               return $ DM.Sets d
-          else do
-               isAmrap <- lookahead TokenAmrap
-               if isAmrap
-               then do
-                    amrap
-                    colon
-                    spaces
-                    t <- time
-                    return $ DM.Amrap t
-               else do 
-                    isForTime <- lookahead TokenForTime
-                    if isForTime
-                    then do
-                         fortime
-                         spaces
-                         return $ DM.ForTime
-                    else do
-                         fortimecap
-                         colon
-                         spaces
-                         t <- time
-                         return $ DM.ForTimeCap t
+     iterationElement = (TokenSets,setsParser) <|>
+                        (TokenAmrap,amrapParser) <|>
+                        (TokenForTime,fortimeParser) <|>
+                        fortimecapParser
 
+     setsParser = colonEntryParser sets $ do
+          d <- digits
+          return $ DM.Sets d
+
+     amrapParser = colonEntryParser amrap $ do
+          t <- time
+          return $ DM.Amrap t
+
+     fortimeParser = do
+          fortime
+          spaces
+          return DM.ForTime
+
+     fortimecapParser = colonEntryParser fortimecap $ do
+          t <- time
+          return $ DM.ForTimeCap t
 
 blockMeasure :: TokenParser DM.BlockMeasure
-blockMeasure = do
-          spaces
-          measure
-          colon
-          spaces
-          isNewline <- lookahead TokenNewline
-          if isNewline
-          then do
-               newline          
+blockMeasure = colonEntryParser measure $ (TokenNewline,blockEntryParser) <|> noneParser
+  where
+     blockEntryParser = do
+               newline
                dashOption
                m <- blockMeasureEntry
                newline
                return m
-          else do
+
+     blockMeasureEntry = (TokenReps,repsParser) <|>
+                         (TokenWeight,weightParser) <|>
+                          distanceParser
+
+     noneParser = do
                none
                newline
                return DM.NoBlockMeasure
-  where
-     blockMeasureEntry = do
-          isReps <- lookahead TokenReps
-          if isReps
-          then do
-               reps
-               colon
-               spaces
+
+     repsParser = colonEntryParser reps $ do
                r <- digits
                return $ DM.MeasureBlockReps r
-          else do
-               isWeight <- lookahead TokenWeight
-               if isWeight
-               then do
-                    weight
-                    colon
-                    spaces
+
+     weightParser = colonEntryParser weight $ do
                     w <- digits
                     return $ DM.MeasureBlockWeight $ fromInteger w
-               else do
-                    distance
-                    colon
-                    spaces
+
+     distanceParser = colonEntryParser distance $ do
                     d <- digits
                     return $ DM.MeasureBlockDistance $ fromInteger d
 
 movementsEntry :: TokenParser [DM.Movement]
-movementsEntry = do
-     spaces
-     movements
-     colon
-     spaces
+movementsEntry = colonEntryParser movements $ do
      newline
      movementsEntryList []
 
 -- Checking for a TokenDash on the lookahead doesn't catch the 
 -- last movement which has a "- block" after.
 movementsEntryList :: [DM.Movement] -> TokenParser [DM.Movement]
-movementsEntryList acc = do
+movementsEntryList acc = do     
      m <- movementEntry
-     b <- lookahead2 TokenMovement
-     if b then movementsEntryList (m:acc)
+     b <- lookahead2 TokenMovement     
+     if b then do                    
+          movementsEntryList (m:acc)
           else return (m:acc)
 
 movementEntry :: TokenParser DM.Movement
 movementEntry = do
      dashOption
-     movement
-     colon
-     spaces
-     description <- string
-     newline
-     ps <- movementParamList [DM.DescriptionParam description]
-     let maybeMovement = DM.fromMovementParams ps
-     case maybeMovement of
-          Just m -> return m
-          Nothing -> parseError "Incomplete movement"
+     colonEntryParser movement $ do
+          description <- string
+          newline          
+          ps <- movementParamList [DM.DescriptionParam description]          
+          let maybeMovement = DM.fromMovementParams ps
+          case maybeMovement of
+               Just m -> return m
+               Nothing -> parseError "Incomplete movement"
 
 movementParamList :: [DM.MovementParams] -> TokenParser [DM.MovementParams]
 movementParamList acc = do
@@ -263,42 +277,21 @@ movementParamList acc = do
 
   where
      paramTokens = [TokenNotes, TokenLabels,TokenTargets,
-                    TokenIteration, TokenScalers, TokenMeasures, 
+                    TokenIteration, TokenScalers, TokenMeasures,
                     TokenSubmovements]
 
 movementParam :: TokenParser DM.MovementParams
-movementParam = do
-     cs <- get
-     case cs of
-          (TokenNotes:_) -> do 
-               n <- notesEntry
-               return $ DM.NotesParam n
-          (TokenLabels:_) -> do
-               l <- labelsEntry
-               return $ DM.LabelsParam l
-          (TokenTargets:_) -> do
-               t <- targetsEntry
-               return $ DM.TargetsParam t
-          (TokenIteration:_) -> do
-               i <- iterationEntry
-               return $ DM.IterationParam i
-          (TokenScalers:_) -> do
-               s <- scalersEntry
-               return $ DM.ScalersParam s
-          (TokenMeasures:_) -> do
-               m <- measuresEntry
-               return $ DM.MeasuresParam m
-          (TokenSubmovements:_) -> do
-               v <- submovementsEntry
-               return $ DM.SubmovementsParam v
-          _ -> parseError "Incomplete movement specification."
+movementParam = (TokenNotes,notesEntry <&> DM.NotesParam) <|>
+                (TokenLabels,labelsEntry <&> DM.LabelsParam) <|>
+                (TokenTargets,targetsEntry <&> DM.TargetsParam) <|>
+                (TokenIteration,iterationEntry <&> DM.IterationParam) <|>
+                (TokenScalers,scalersEntry <&> DM.ScalersParam) <|>
+                (TokenMeasures,measuresEntry <&> DM.MeasuresParam) <|>
+                (TokenSubmovements,submovementsEntry <&> DM.SubmovementsParam) <|>
+                parseError "Incomplete movement specification."
 
 submovementsEntry :: TokenParser [[DM.MovementParams]]
-submovementsEntry = do
-     spaces
-     submovements
-     colon
-     spaces
+submovementsEntry = colonEntryParser submovements $ do     
      none
      newline
      return []
@@ -307,10 +300,7 @@ measuresEntry :: TokenParser [DM.Measure]
 measuresEntry = dashListEntry measures measureElement
 
 measureElement :: TokenParser DM.Measure
-measureElement = do
-     weight
-     colon
-     spaces
+measureElement = colonEntryParser weight $ do
      d <- digits
      return $ DM.MeasureWeight d
 
@@ -318,10 +308,7 @@ scalersEntry :: TokenParser [DM.Scalers]
 scalersEntry = dashListEntry scalers scalerElement
 
 scalerElement :: TokenParser (DM.Scalers)
-scalerElement = do
-     rpe
-     colon
-     spaces
+scalerElement = colonEntryParser rpe $ do     
      (low,high) <- range
      if 0 < low && low < 10 &&
         1 <= high && high <= 10
@@ -335,17 +322,14 @@ range = do
      high <- digits
      if 0 <= low && low < high
      then return (low,high)
-     else parseError "Range expected" 
+     else parseError "Range expected"
 
 iterationEntry :: TokenParser DM.Iteration
 iterationEntry = dashEntry iteration iterationElement
  where
      iterationElement = do
           b <- lookahead TokenReps
-          if b then do
-               reps
-               colon
-               spaces
+          if b then colonEntryParser reps $ do               
                d <- digits
                return $ DM.IterateByReps d
           else parseError "Expecting iteration entry."
@@ -354,17 +338,10 @@ labelsEntry :: TokenParser [String]
 labelsEntry = dashListEntry labels string
 
 targetsEntry :: TokenParser [String]
-targetsEntry = do
-     ts <- dashListEntry targets string
-     newline
-     return ts
+targetsEntry = dashListEntry targets string
 
 notesEntry :: TokenParser String
-notesEntry = do
-     spaces
-     notes
-     colon
-     spaces
+notesEntry = colonEntryParser notes $ do
      s <- string
      newline
      return s
@@ -404,19 +381,19 @@ month :: TokenParser Integer
 month = do
      n1 <- digit
      n2 <- digit
-     if n1 >= 0 && n1 <= 9 && 
+     if n1 >= 0 && n1 <= 9 &&
         n2 >= 1 && n2 <= 9
      then return $ digitsToInt [n1,n2]
-     else parseError "Expecting a month." 
+     else parseError "Expecting a month."
 
 day :: TokenParser Integer
 day = do
      n1 <- digit
      n2 <- digit
-     if n1 >= 0 && n1 <= 9 && 
+     if n1 >= 0 && n1 <= 9 &&
         n2 >= 1 && n2 <= 9
      then return $ digitsToInt [n1,n2]
-     else parseError "Expecting a day." 
+     else parseError "Expecting a day."
 
 year :: TokenParser Integer
 year = do
@@ -424,279 +401,106 @@ year = do
      n2 <- digit
      n3 <- digit
      n4 <- digit
-     if n1 >= 1 && n1 <= 9 && 
+     if n1 >= 1 && n1 <= 9 &&
         n2 >= 0 && n2 <= 9 &&
         n3 >= 0 && n3 <= 9 &&
         n4 >= 0 && n2 <= 9
      then return $ digitsToInt [n1,n2,n3,n4]
-     else parseError "Expecting a year." 
+     else parseError "Expecting a year."
 
 digits :: TokenParser Integer
 digits = do
-     cs <- get
-     case cs of
-          (TokenDigit _:_) -> digitsAcc []
-          _ -> parseError "Expecting digits."
+     d1 <- digit
+     digitsAcc [d1]
  where
      digitsAcc :: [Integer] -> TokenParser Integer
-     digitsAcc acc = do
-          d <- digit
-          cs <- get
-          case cs of
-               -- Lookahead to see if we need to keep parsing digits:
-               (TokenDigit _:_) -> digitsAcc (d:acc)
-               _ -> return $ digitsToInt (reverse (d:acc))
+     digitsAcc acc = do  
+          isDigit <- lookahead (TokenDigit 0)
+          if isDigit
+          then do d <- digit
+                  digitsAcc (d:acc)
+          else return $ digitsToInt (reverse acc)
 
 digit :: TokenParser Integer
-digit = do
-     cs <- get
-     case cs of
-          ((TokenDigit d):cs') -> do
-               put cs'
-               return d
-          _ -> parseError "Digit expected."
+digit = tokenIntegerParser TokenDigit "Digit expected."
 
 backslash :: TokenParser ()
-backslash = do
-     cs <- get
-     case cs of
-          (TokenBackslash:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "Backslash expected."
+backslash = tokenUnitParser TokenBackslash "Backslash expected."
 
 colon :: TokenParser ()
-colon = do
-     cs <- get
-     case cs of
-          (TokenColon:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "Colon expected."
+colon = tokenUnitParser TokenColon "Colon expected."
 
 none :: TokenParser ()
-none = do
-     cs <- get
-     case cs of
-          (TokenNone:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "none expected."
+none = tokenUnitParser TokenNone "none expected."
 
 newline :: TokenParser ()
-newline = do
-     spaces
-     cs <- get
-     case cs of
-          (TokenNewline:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "newline expected."
+newline = spaces >> tokenUnitParser TokenNewline "newline expected."
 
 space :: TokenParser ()
-space = do
-     cs <- get
-     case cs of
-          (TokenSpace:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "space expected."
+space = tokenUnitParser TokenSpace "space expected."
 
 trainingDay :: TokenParser ()
-trainingDay = do
-     cs <- get
-     case cs of
-          (TokenTrainingDay:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "TrainingDay expected."
+trainingDay = tokenUnitParser TokenTrainingDay "TrainingDay expected."
 
 block :: TokenParser ()
-block = do
-     cs <- get
-     case cs of
-          (TokenBlock:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "block expected."
+block = tokenUnitParser TokenBlock "block expected."
 
 sets :: TokenParser ()
-sets = do
-     cs <- get
-     case cs of
-          (TokenSets:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "sets expected."
+sets = tokenUnitParser TokenSets "sets expected."
 
 iteration :: TokenParser ()
-iteration = do
-     cs <- get
-     case cs of
-          (TokenIteration:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "iteration expected."
+iteration = tokenUnitParser TokenIteration "iteration expected."
 
 measure :: TokenParser ()
-measure = do
-     cs <- get
-     case cs of
-          (TokenMeasure:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "measure expected."
+measure = tokenUnitParser TokenMeasure "measure expected."
 
 notes :: TokenParser ()
-notes = do
-     cs <- get
-     case cs of
-          (TokenNotes:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "notes expected."
+notes = tokenUnitParser TokenNotes "notes expected."
 
 string :: TokenParser String
-string = do
-     cs <- get
-     case cs of
-          (TokenString s:cs') -> do
-               put cs'
-               return s
-          _ -> parseError "string expected."
+string = tokenStringParser TokenString "string expected."
 
 movements :: TokenParser ()
-movements = do
-     cs <- get
-     case cs of
-          (TokenMovements:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "movements expected."
+movements = tokenUnitParser TokenMovements "movements expected."
 
 movement :: TokenParser ()
-movement = do
-     cs <- get
-     case cs of
-          (TokenMovement:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "movement expected."
+movement = tokenUnitParser TokenMovement "movement expected."
 
 scalers :: TokenParser ()
-scalers = do
-     cs <- get
-     case cs of
-          (TokenScalers:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "scalers expected."
-
+scalers = tokenUnitParser TokenScalers "scalers expected."
 
 labels :: TokenParser ()
-labels = do
-     cs <- get
-     case cs of
-          (TokenLabels:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "labels expected."
+labels = tokenUnitParser TokenLabels "labels expected."
 
 targets :: TokenParser ()
-targets = do
-     cs <- get
-     case cs of
-          (TokenTargets:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "notes expected."
+targets = tokenUnitParser TokenTargets "targets expected."
 
 reps :: TokenParser ()
-reps = do
-     cs <- get
-     case cs of
-          (TokenReps:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "reps expected."
+reps = tokenUnitParser TokenReps "reps expected."
 
 rpe :: TokenParser ()
-rpe = do
-     cs <- get
-     case cs of
-          (TokenRPE:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "rpe expected."
+rpe = tokenUnitParser TokenRPE "rpe expected."
 
 measures :: TokenParser ()
-measures = do
-     cs <- get
-     case cs of
-          (TokenMeasures:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "measures expected."
+measures = tokenUnitParser TokenMeasures "measures expected."
 
 weight :: TokenParser ()
-weight = do
-     cs <- get
-     case cs of
-          (TokenWeight:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "weight expected."
+weight = tokenUnitParser TokenWeight "weight expected."
 
 submovements :: TokenParser ()
-submovements = do
-     cs <- get
-     case cs of
-          (TokenSubmovements:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "submovements expected."
+submovements = tokenUnitParser TokenSubmovements "submovements expected."
 
 dash :: TokenParser ()
-dash = do
-     cs <- get
-     case cs of
-          (TokenDash:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "dash expected."
+dash = tokenUnitParser TokenDash "dash expected."
 
 amrap :: TokenParser ()
-amrap = do
-     cs <- get
-     case cs of
-          (TokenAmrap:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "amrap expected."
+amrap = tokenUnitParser TokenAmrap "amrap expected."
 
-fortime :: TokenParser () 
-fortime = do
-     cs <- get
-     case cs of
-          (TokenForTime:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "fortime expected."
+fortime :: TokenParser ()
+fortime = tokenUnitParser TokenForTime "fortime expected."
 
-fortimecap :: TokenParser () 
-fortimecap = do
-     cs <- get
-     case cs of
-          (TokenForTimeCap:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "fortimecap expected."
+fortimecap :: TokenParser ()
+fortimecap = tokenUnitParser TokenForTimeCap "fortimecap expected."
 
-distance :: TokenParser () 
-distance = do
-     cs <- get
-     case cs of
-          (TokenDistance:cs') -> do
-               put cs'
-               return ()
-          _ -> parseError "distance expected."
+distance :: TokenParser ()
+distance = tokenUnitParser TokenDistance "distance expected."
