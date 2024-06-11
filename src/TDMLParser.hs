@@ -13,6 +13,7 @@ import Control.Monad.State.Lazy
 import Data.Functor
 
 type TokenParser a = StateT [Token] IO a
+
 parser :: [Token] -> IO DM.TrainingDay
 parser = evalStateT trainingDayEntry
 
@@ -178,8 +179,33 @@ blockEntry = colonEntryParser block $ do
           blockIteration <- blockIterationEntry
           blockMeasure <- blockMeasure
           blockNotes <- notesEntry          
+          subblocks <- subblockList' []
+          return $ DM.Block blockID blockIteration blockMeasure blockNotes subblocks
+  where
+     subblockList' :: [DM.Subblock] -> TokenParser [DM.Subblock]
+     subblockList' acc = do
+          b <- lookahead2 TokenSubblock
+          if b
+          then do
+               dashOption
+               bl <- subblockEntry               
+               n <- lookahead TokenNewline
+               if n
+               then do                    
+                    newline
+                    subblockList' (bl:acc)
+               else subblockList' (bl:acc)
+          else return acc          
+
+subblockEntry :: TokenParser DM.Subblock
+subblockEntry = colonEntryParser subblock $ do
+          blockID <- digits     
+          newline
+          blockIteration <- blockIterationEntry
+          blockMeasure <- blockMeasure
+          blockNotes <- notesEntry          
           blockMovements <- movementsEntry          
-          return $ DM.Block blockID blockIteration blockMeasure blockNotes blockMovements
+          return $ DM.Subblock blockID blockIteration blockMeasure blockNotes blockMovements
 
 blockIterationEntry :: TokenParser DM.BlockIteration
 blockIterationEntry = dashEntry iteration iterationElement
@@ -441,6 +467,9 @@ space = tokenUnitParser TokenSpace "space expected."
 
 trainingDay :: TokenParser ()
 trainingDay = tokenUnitParser TokenTrainingDay "TrainingDay expected."
+
+subblock :: TokenParser ()
+subblock = tokenUnitParser TokenSubblock "subblock expected."
 
 block :: TokenParser ()
 block = tokenUnitParser TokenBlock "block expected."

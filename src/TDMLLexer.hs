@@ -16,6 +16,7 @@ data Token = TokenDash
      | TokenDigit Integer
      | TokenTrainingDay
      | TokenBlock
+     | TokenSubblock
      | TokenSets
      | TokenAmrap
      | TokenForTimeCap
@@ -69,6 +70,7 @@ lexer ('f':'o':'r':'t':'i':'m':'e':cs) = TokenForTime : lexer cs
 lexer ('n':'o':'n':'e':cs) = TokenNone : lexer cs
 lexer ('T':'r':'a':'i':'n':'i':'n':'g':'D':'a':'y':cs) = TokenTrainingDay : lexer cs
 lexer ('b':'l':'o':'c':'k':cs) = TokenBlock : lexer cs
+lexer ('s':'u':'b':'b':'l':'o':'c':'k':cs) = TokenSubblock : lexer cs
 lexer ('s':'e':'t':'s':cs) = TokenSets : lexer cs
 lexer ('s':'c':'a':'l':'e':'r':'s':cs) = TokenScalers : lexer cs
 lexer ('i':'t':'e':'r':'a':'t':'i':'o':'n':cs) = TokenIteration : lexer cs

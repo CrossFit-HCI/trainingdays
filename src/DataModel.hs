@@ -111,6 +111,7 @@ module DataModel where
         | ForTime
         | ForTimeCap Time
         | Sets Integer
+        | NoBlockIteration
         deriving (Generic, Show)
 
     data BlockMeasure =
@@ -121,11 +122,19 @@ module DataModel where
         deriving (Generic, Show)
 
     data Block = Block {
-        id :: Integer,
+        blockId :: Integer,
         blockIteration :: BlockIteration,   
         blockMeasure :: BlockMeasure,
         blockNotes :: String,    
-        movements :: [Movement]
+        subblocks :: [Subblock]
+    } deriving (Generic, Show)
+
+    data Subblock = Subblock {
+        subblockId :: Integer,
+        subblockIteration :: BlockIteration,   
+        subblockMeasure :: BlockMeasure,
+        subblockNotes :: String,    
+        sublockMovements :: [Movement]
     } deriving (Generic, Show)
 
     data TrainingDay = TrainingDay {
