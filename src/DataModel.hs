@@ -5,6 +5,7 @@
 
 module DataModel where
     import GHC.Generics
+    import Data.Aeson
     
     data Time = Time {
         hours :: Integer,
@@ -13,11 +14,17 @@ module DataModel where
         milliseconds :: Integer
     } deriving (Generic, Show)
 
+    instance ToJSON Time
+    instance FromJSON Time
+
     data Date = Date {
         day :: Integer,
         month :: Integer,
         year :: Integer
     } deriving (Generic, Show)
+
+    instance ToJSON Date
+    instance FromJSON Date
 
     data Measure = 
           MeasureRepetitions Integer
@@ -27,10 +34,16 @@ module DataModel where
         | MeasureWeight Double
         deriving (Generic, Show)
 
+    instance ToJSON Measure
+    instance FromJSON Measure
+
     data Iteration = 
         IterateByReps Integer
       | IterateByDist Integer
       deriving (Generic, Show)
+
+    instance ToJSON Iteration
+    instance FromJSON Iteration
 
     data Scalers = 
         ScaleDistance Integer
@@ -38,6 +51,9 @@ module DataModel where
       | ScaleIncreaseRoundReps Integer
       | ScaleRPE (Integer,Integer)
       deriving (Generic, Show)
+
+    instance ToJSON Scalers
+    instance FromJSON Scalers
 
     data Movement = Movement {
         description :: String,
@@ -50,6 +66,9 @@ module DataModel where
         submovements :: [Movement]
     } deriving (Generic, Show)
 
+    instance ToJSON Movement
+    instance FromJSON Movement
+
     data MovementParams =
           DescriptionParam String
         | NotesParam String
@@ -60,6 +79,9 @@ module DataModel where
         | MeasuresParam [Measure]
         | SubmovementsParam [[MovementParams]]
       deriving (Generic, Show)       
+
+    instance ToJSON MovementParams
+    instance FromJSON MovementParams
 
     fromMovementParams :: [MovementParams] -> Maybe Movement
     fromMovementParams ps = do
@@ -114,12 +136,18 @@ module DataModel where
         | NoBlockIteration
         deriving (Generic, Show)
 
+    instance ToJSON BlockIteration
+    instance FromJSON BlockIteration
+
     data BlockMeasure =
           MeasureBlockReps Integer
         | MeasureBlockWeight Double
         | MeasureBlockDistance Integer
         | NoBlockMeasure
         deriving (Generic, Show)
+
+    instance ToJSON BlockMeasure
+    instance FromJSON BlockMeasure
 
     data Block = Block {
         blockId :: Integer,
@@ -129,6 +157,9 @@ module DataModel where
         subblocks :: [Subblock]
     } deriving (Generic, Show)
 
+    instance ToJSON Block
+    instance FromJSON Block
+
     data Subblock = Subblock {
         subblockId :: Integer,
         subblockIteration :: BlockIteration,   
@@ -137,7 +168,13 @@ module DataModel where
         subblockMovements :: [Movement]
     } deriving (Generic, Show)
 
+    instance ToJSON Subblock
+    instance FromJSON Subblock
+
     data TrainingDay = TrainingDay {
         date :: Date,
         blocks :: [Block]
     } deriving (Generic, Show)
+
+    instance ToJSON TrainingDay
+    instance FromJSON TrainingDay

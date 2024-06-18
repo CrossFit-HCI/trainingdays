@@ -27,6 +27,13 @@ testParserFile s = do
      let t = parser cs
      t >>= print
 
+parse :: FilePath -> IO DM.TrainingDay
+parse s = do
+     f <- (readFile s)
+     let cs = lexer f
+     parser cs
+     
+
 parseError :: String -> TokenParser a
 parseError msg = do
      cs <- get
