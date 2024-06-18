@@ -18,9 +18,10 @@ TrainingDay: 02/23/2024
     iteration:
     - reps: 2
     scalers:
+    - increase-rounds-by-reps: 5
     - rpe: 6-7
     measures:
-    - weight: 170
+    - weight: 170.0
     submovements: none
   - movement: "clean 2"
     notes: "Drop the bar after the first clean."
@@ -32,5 +33,5 @@ TrainingDay: 02/23/2024
     scalers:
     - rpe: 6-7
     measures:
-    - weight: 170
+    - weight: 170.0
     submovements: none 

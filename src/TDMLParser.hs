@@ -61,9 +61,9 @@ tokenParser :: Token -> String -> TokenParser TokenData
 tokenParser t msg = do
      cs <- get
      case cs of
-          (t':cs') -> 
-               if (compareTokens t t') 
-               then do                    
+          (t':cs') ->
+               if (compareTokens t t')
+               then do
                     put cs'
                     return . getTokenData $ t'
                else parseError msg
@@ -163,10 +163,10 @@ blockList = blockList' []
           if b
           then do
                dashOption
-               bl <- blockEntry               
+               bl <- blockEntry
                n <- lookahead TokenNewline
                if n
-               then do                    
+               then do
                     newline
                     blockList' (bl:acc)
                else blockList' (bl:acc)
@@ -174,11 +174,11 @@ blockList = blockList' []
 
 blockEntry :: TokenParser DM.Block
 blockEntry = colonEntryParser block $ do
-          blockID <- digits     
+          blockID <- digits
           newline
           blockIteration <- blockIterationEntry
           blockMeasure <- blockMeasure
-          blockNotes <- notesEntry          
+          blockNotes <- notesEntry
           subblocks <- subblockList' []
           return $ DM.Block blockID blockIteration blockMeasure blockNotes subblocks
   where
@@ -188,25 +188,26 @@ blockEntry = colonEntryParser block $ do
           if b
           then do
                dashOption
-               bl <- subblockEntry               
+               bl <- subblockEntry
                n <- lookahead TokenNewline
                if n
-               then do                    
+               then do
                     newline
                     subblockList' (bl:acc)
                else subblockList' (bl:acc)
-          else return acc          
+          else return acc
 
 subblockEntry :: TokenParser DM.Subblock
 subblockEntry = colonEntryParser subblock $ do
-          blockID <- digits     
+          blockID <- digits
           newline
           blockIteration <- blockIterationEntry
           blockMeasure <- blockMeasure
-          blockNotes <- notesEntry          
-          blockMovements <- movementsEntry          
+          blockNotes <- notesEntry
+          blockMovements <- movementsEntry
           return $ DM.Subblock blockID blockIteration blockMeasure blockNotes blockMovements
 
+-- TODO: Need to add NoBlockIteration
 blockIterationEntry :: TokenParser DM.BlockIteration
 blockIterationEntry = dashEntry iteration iterationElement
   where
@@ -220,7 +221,7 @@ blockIterationEntry = dashEntry iteration iterationElement
           return $ DM.Sets d
 
      amrapParser = colonEntryParser amrap $ do
-          t <- time
+          t <- timeValue
           return $ DM.Amrap t
 
      fortimeParser = do
@@ -229,7 +230,7 @@ blockIterationEntry = dashEntry iteration iterationElement
           return DM.ForTime
 
      fortimecapParser = colonEntryParser fortimecap $ do
-          t <- time
+          t <- timeValue
           return $ DM.ForTimeCap t
 
 blockMeasure :: TokenParser DM.BlockMeasure
@@ -242,26 +243,19 @@ blockMeasure = colonEntryParser measure $ (TokenNewline,blockEntryParser) <|> no
                newline
                return m
 
-     blockMeasureEntry = (TokenReps,repsParser) <|>
-                         (TokenWeight,weightParser) <|>
-                          distanceParser
+     blockMeasureEntry = (TokenReps,repsEntry DM.MeasureBlockReps) <|>
+                         (TokenWeight,weightEntry DM.MeasureBlockWeight) <|>
+                          (distanceEntry DM.MeasureBlockDistance)
 
      noneParser = do
                none
                newline
                return DM.NoBlockMeasure
 
-     repsParser = colonEntryParser reps $ do
-               r <- digits
-               return $ DM.MeasureBlockReps r
-
-     weightParser = colonEntryParser weight $ do
-                    w <- digits
-                    return $ DM.MeasureBlockWeight $ fromInteger w
-
-     distanceParser = colonEntryParser distance $ do
+distanceEntry :: (Integer -> a) -> TokenParser a
+distanceEntry c = colonEntryParser distance $ do
                     d <- digits
-                    return $ DM.MeasureBlockDistance $ fromInteger d
+                    return $ c d
 
 movementsEntry :: TokenParser [DM.Movement]
 movementsEntry = colonEntryParser movements $ do
@@ -271,10 +265,10 @@ movementsEntry = colonEntryParser movements $ do
 -- Checking for a TokenDash on the lookahead doesn't catch the 
 -- last movement which has a "- block" after.
 movementsEntryList :: [DM.Movement] -> TokenParser [DM.Movement]
-movementsEntryList acc = do     
+movementsEntryList acc = do
      m <- movementEntry
-     b <- lookahead2 TokenMovement     
-     if b then do                    
+     b <- lookahead2 TokenMovement
+     if b then do
           movementsEntryList (m:acc)
           else return (m:acc)
 
@@ -283,8 +277,8 @@ movementEntry = do
      dashOption
      colonEntryParser movement $ do
           description <- string
-          newline          
-          ps <- movementParamList [DM.DescriptionParam description]          
+          newline
+          ps <- movementParamList [DM.DescriptionParam description]
           let maybeMovement = DM.fromMovementParams ps
           case maybeMovement of
                Just m -> return m
@@ -317,7 +311,7 @@ movementParam = (TokenNotes,notesEntry <&> DM.NotesParam) <|>
                 parseError "Incomplete movement specification."
 
 submovementsEntry :: TokenParser [[DM.MovementParams]]
-submovementsEntry = colonEntryParser submovements $ do     
+submovementsEntry = colonEntryParser submovements $ do
      none
      newline
      return []
@@ -326,19 +320,49 @@ measuresEntry :: TokenParser [DM.Measure]
 measuresEntry = dashListEntry measures measureElement
 
 measureElement :: TokenParser DM.Measure
-measureElement = colonEntryParser weight $ do
+measureElement = (TokenWeight,weightEntry DM.MeasureWeight)       <|>
+                 (TokenReps,repsEntry DM.MeasureRepetitions)      <|>
+                 (TokenTime,timeEntry DM.MeasureTime)             <|>
+                 (TokenDistance,distanceEntry DM.MeasureDistance) <|>
+                 (TokenCalories,calsEntry DM.MeasureCalories)     <|>
+                 parseError "Incorrect measure."
+
+calsEntry :: (Integer -> a) -> TokenParser a
+calsEntry c = colonEntryParser calories $ do
      d <- digits
-     return $ DM.MeasureWeight d
+     return $ c d
+
+weightEntry :: (Double -> a) -> TokenParser a
+weightEntry c = colonEntryParser weight $ do
+     d <- decimal
+     return $ c d
+
+timeEntry :: (DM.Time -> a) -> TokenParser a
+timeEntry c = colonEntryParser time $ do
+     t <- timeValue
+     return $ c t
 
 scalersEntry :: TokenParser [DM.Scalers]
 scalersEntry = dashListEntry scalers scalerElement
 
 scalerElement :: TokenParser (DM.Scalers)
-scalerElement = colonEntryParser rpe $ do     
+scalerElement = (TokenDistance,distanceEntry DM.ScaleDistance) <|>
+                (TokenWeight,weightEntry DM.ScaleWeight) <|>
+                (TokenIncreaseRoundsByReps,increaseRoundsByRepsEntry) <|>
+                (TokenRPE,rpeEntry DM.ScaleRPE) <|>                  
+                parseError "Incorrect scaler."
+
+increaseRoundsByRepsEntry :: TokenParser DM.Scalers
+increaseRoundsByRepsEntry = colonEntryParser increaseRoundsByReps $ do
+     d <- digits
+     return $ DM.ScaleIncreaseRoundReps d
+
+rpeEntry :: ((Integer,Integer) -> a) -> TokenParser a
+rpeEntry c = colonEntryParser rpe $ do
      (low,high) <- range
      if 0 < low && low < 10 &&
         1 <= high && high <= 10
-     then return $ DM.ScaleRPE (low,high)
+     then return $ c (low,high)
      else parseError "Incorrect RPE range."
 
 range :: TokenParser (Integer,Integer)
@@ -353,12 +377,14 @@ range = do
 iterationEntry :: TokenParser DM.Iteration
 iterationEntry = dashEntry iteration iterationElement
  where
-     iterationElement = do
-          b <- lookahead TokenReps
-          if b then colonEntryParser reps $ do               
+     iterationElement = (TokenReps,repsEntry DM.IterateByReps) <|> 
+                        (TokenDistance,distanceEntry DM.IterateByDist) <|>
+                        parseError "Expecting iteration entry."
+
+repsEntry :: (Integer -> a) -> TokenParser a
+repsEntry c = colonEntryParser reps $ do
                d <- digits
-               return $ DM.IterateByReps d
-          else parseError "Expecting iteration entry."
+               return $ c d
 
 labelsEntry :: TokenParser [String]
 labelsEntry = dashListEntry labels string
@@ -379,8 +405,8 @@ spaces = do
           (TokenSpace:r) -> put r >> spaces
           _ -> return ()
 
-time :: TokenParser DM.Time
-time = do
+timeValue :: TokenParser DM.Time
+timeValue = do
      h1 <- digit
      h2 <- digit
      colon
@@ -434,13 +460,29 @@ year = do
      then return $ digitsToInt [n1,n2,n3,n4]
      else parseError "Expecting a year."
 
+decimal :: TokenParser Double
+decimal = do
+     d1 <- digits
+     dot
+     d2 <- digits
+     return $ floatFromIntegers d1 d2
+
+floatFromIntegers :: Integer -> Integer -> Double
+floatFromIntegers d1 d2 = (fromInteger d1) + helper (fromInteger d2)
+  where
+     helper :: Double -> Double
+     helper d | d > 1.0 = helper (d/10)
+              | d <= 1.0 = d
+              -- Never reached.
+              | otherwise = 0.0
+
 digits :: TokenParser Integer
 digits = do
      d1 <- digit
      digitsAcc [d1]
  where
      digitsAcc :: [Integer] -> TokenParser Integer
-     digitsAcc acc = do  
+     digitsAcc acc = do
           isDigit <- lookahead (TokenDigit 0)
           if isDigit
           then do d <- digit
@@ -449,6 +491,9 @@ digits = do
 
 digit :: TokenParser Integer
 digit = tokenIntegerParser TokenDigit "Digit expected."
+
+dot :: TokenParser ()
+dot = tokenUnitParser TokenDot "Period expected."
 
 backslash :: TokenParser ()
 backslash = tokenUnitParser TokenBackslash "Backslash expected."
@@ -533,3 +578,12 @@ fortimecap = tokenUnitParser TokenForTimeCap "fortimecap expected."
 
 distance :: TokenParser ()
 distance = tokenUnitParser TokenDistance "distance expected."
+
+time :: TokenParser ()
+time = tokenUnitParser TokenTime "time expected."
+
+calories :: TokenParser ()
+calories = tokenUnitParser TokenCalories "calories expected."
+
+increaseRoundsByReps :: TokenParser ()
+increaseRoundsByReps = tokenUnitParser TokenIncreaseRoundsByReps "increase-rounds-by-reps expected."

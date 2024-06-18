@@ -21,10 +21,10 @@ module DataModel where
 
     data Measure = 
           MeasureRepetitions Integer
-        | MeasureTime String
-        | MeasureDistance Float
-        | MeasureCalories Int
-        | MeasureWeight Integer
+        | MeasureTime Time
+        | MeasureDistance Integer
+        | MeasureCalories Integer
+        | MeasureWeight Double
         deriving (Generic, Show)
 
     data Iteration = 
@@ -33,8 +33,8 @@ module DataModel where
       deriving (Generic, Show)
 
     data Scalers = 
-        ScaleDistance Float
-      | ScaleWeight Float
+        ScaleDistance Integer
+      | ScaleWeight Double
       | ScaleIncreaseRoundReps Integer
       | ScaleRPE (Integer,Integer)
       deriving (Generic, Show)
@@ -116,8 +116,8 @@ module DataModel where
 
     data BlockMeasure =
           MeasureBlockReps Integer
-        | MeasureBlockWeight Float
-        | MeasureBlockDistance Float
+        | MeasureBlockWeight Double
+        | MeasureBlockDistance Integer
         | NoBlockMeasure
         deriving (Generic, Show)
 
@@ -134,7 +134,7 @@ module DataModel where
         subblockIteration :: BlockIteration,   
         subblockMeasure :: BlockMeasure,
         subblockNotes :: String,    
-        sublockMovements :: [Movement]
+        subblockMovements :: [Movement]
     } deriving (Generic, Show)
 
     data TrainingDay = TrainingDay {
