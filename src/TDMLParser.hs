@@ -393,11 +393,16 @@ repsEntry c = colonEntryParser reps $ do
                d <- digits
                return $ c d
 
-labelsEntry :: TokenParser [String]
-labelsEntry = dashListEntry labels string
+constString :: (String -> a) -> TokenParser a
+constString const = do
+     s <- string
+     return $ const s
 
-targetsEntry :: TokenParser [String]
-targetsEntry = dashListEntry targets string
+labelsEntry :: TokenParser [DM.Label]
+labelsEntry = dashListEntry labels $ constString DM.Tag
+
+targetsEntry :: TokenParser [DM.Target]
+targetsEntry = dashListEntry targets $ constString DM.Target
 
 notesEntry :: TokenParser String
 notesEntry = colonEntryParser notes $ do

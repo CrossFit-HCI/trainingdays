@@ -55,11 +55,23 @@ module DataModel where
     instance ToJSON Scalers
     instance FromJSON Scalers
 
+    newtype Label = Tag String
+      deriving (Generic, Show)
+
+    instance ToJSON Label
+    instance FromJSON Label
+
+    newtype Target = Target String
+      deriving (Generic, Show)    
+
+    instance ToJSON Target
+    instance FromJSON Target
+
     data Movement = Movement {
         description :: String,
         notes :: String,
-        labels :: [String],
-        targets :: [String],
+        labels :: [Label],
+        targets :: [Target],
         iteration :: Iteration,
         scalers :: [Scalers],
         measures :: [Measure],
@@ -72,8 +84,8 @@ module DataModel where
     data MovementParams =
           DescriptionParam String
         | NotesParam String
-        | LabelsParam [String]
-        | TargetsParam [String]
+        | LabelsParam [Label]
+        | TargetsParam [Target]
         | IterationParam Iteration
         | ScalersParam [Scalers]
         | MeasuresParam [Measure]
