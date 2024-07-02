@@ -349,17 +349,17 @@ timeEntry c = colonEntryParser time $ do
      t <- timeValue
      return $ c t
 
-scalersEntry :: TokenParser [DM.Scalers]
+scalersEntry :: TokenParser [DM.Scaler]
 scalersEntry = dashListEntry scalers scalerElement
 
-scalerElement :: TokenParser (DM.Scalers)
+scalerElement :: TokenParser (DM.Scaler)
 scalerElement = (TokenDistance,distanceEntry DM.ScaleDistance) <|>
                 (TokenWeight,weightEntry DM.ScaleWeight) <|>
                 (TokenIncreaseRoundsByReps,increaseRoundsByRepsEntry) <|>
                 (TokenRPE,rpeEntry DM.ScaleRPE) <|>                  
                 parseError "Incorrect scaler."
 
-increaseRoundsByRepsEntry :: TokenParser DM.Scalers
+increaseRoundsByRepsEntry :: TokenParser DM.Scaler
 increaseRoundsByRepsEntry = colonEntryParser increaseRoundsByReps $ do
      d <- digits
      return $ DM.ScaleIncreaseRoundReps d
@@ -386,6 +386,7 @@ iterationEntry = dashEntry iteration iterationElement
  where
      iterationElement = (TokenReps,repsEntry DM.IterateByReps) <|> 
                         (TokenDistance,distanceEntry DM.IterateByDist) <|>
+                        (TokenCalories,calsEntry DM.IterateByCalories) <|>
                         parseError "Expecting iteration entry."
 
 repsEntry :: (Integer -> a) -> TokenParser a

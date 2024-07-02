@@ -40,20 +40,21 @@ module DataModel where
     data Iteration = 
         IterateByReps Integer
       | IterateByDist Integer
+      | IterateByCalories Integer
       deriving (Generic, Show)
 
     instance ToJSON Iteration
     instance FromJSON Iteration
 
-    data Scalers = 
+    data Scaler = 
         ScaleDistance Integer
       | ScaleWeight Double
       | ScaleIncreaseRoundReps Integer
       | ScaleRPE (Integer,Integer)
       deriving (Generic, Show)
 
-    instance ToJSON Scalers
-    instance FromJSON Scalers
+    instance ToJSON Scaler
+    instance FromJSON Scaler
 
     newtype Label = Tag String
       deriving (Generic, Show)
@@ -67,13 +68,14 @@ module DataModel where
     instance ToJSON Target
     instance FromJSON Target
 
+    -- TODO: Need to add equipment
     data Movement = Movement {
         description :: String,
         notes :: String,
         labels :: [Label],
         targets :: [Target],
         iteration :: Iteration,
-        scalers :: [Scalers],
+        scalers :: [Scaler],
         measures :: [Measure],
         submovements :: [Movement]
     } deriving (Generic, Show)
@@ -87,7 +89,7 @@ module DataModel where
         | LabelsParam [Label]
         | TargetsParam [Target]
         | IterationParam Iteration
-        | ScalersParam [Scalers]
+        | ScalersParam [Scaler]
         | MeasuresParam [Measure]
         | SubmovementsParam [[MovementParams]]
       deriving (Generic, Show)       
@@ -190,3 +192,14 @@ module DataModel where
 
     instance ToJSON TrainingDay
     instance FromJSON TrainingDay
+
+    data Athlete = Athlete {
+      firstName :: String,
+      lastName :: String,
+      email :: String,
+      training :: [TrainingDay]
+    } deriving (Generic, Show)
+
+    instance ToJSON Athlete
+    instance FromJSON Athlete
+

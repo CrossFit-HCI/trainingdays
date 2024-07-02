@@ -2,9 +2,9 @@ name:                trainingdays
 version:             0.1.0.0
 github:              "githubuser/trainingdays"
 license:             BSD-3-Clause
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2024 Author name here"
+author:              "Harley Eades III"
+maintainer:          "harley.eades@gmail.com"
+copyright:           "2024 Harley Eades III"
 
 extra-source-files:
 - README.md
@@ -24,6 +24,8 @@ dependencies:
 - aeson
 - array
 - mtl
+- mongoDB
+- text
 
 ghc-options:
 - -Wall
