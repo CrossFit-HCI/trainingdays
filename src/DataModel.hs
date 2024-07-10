@@ -187,17 +187,39 @@ module DataModel where
 
     data TrainingDay = TrainingDay {
         date :: Date,
+        cycle :: Maybe TrainingCycle,
         blocks :: [Block]
     } deriving (Generic, Show)
 
     instance ToJSON TrainingDay
     instance FromJSON TrainingDay
 
+    data TrainingCycle = TrainingCycle {
+      -- The start of the cycle.
+      cycleStartDate :: Date,
+      -- The end of the cycle.
+      cycleEndDate :: Date,
+      -- Length in days.
+      cycleLength :: Integer
+    } deriving (Generic, Show)
+
+    instance ToJSON TrainingCycle
+    instance FromJSON TrainingCycle
+
+    data TrainingJournal = TrainingJournal {
+      journalTitle :: String,
+      journalDescription :: String,
+      journalTraining :: [TrainingDay]
+    } deriving (Generic, Show)
+
+    instance ToJSON TrainingJournal
+    instance FromJSON TrainingJournal
+
     data Athlete = Athlete {
       firstName :: String,
       lastName :: String,
       email :: String,
-      training :: [TrainingDay]
+      journals :: [TrainingJournal]
     } deriving (Generic, Show)
 
     instance ToJSON Athlete

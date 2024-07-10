@@ -11,6 +11,7 @@ import TDMLLexer
 
 import Control.Monad.State.Lazy
 import Data.Functor
+import Prelude hiding (cycle)
 
 type TokenParser a = StateT [Token] IO a
 
@@ -158,8 +159,33 @@ trainingDayEntry :: TokenParser DM.TrainingDay
 trainingDayEntry = colonEntryParser trainingDay $ do
      d <- date
      newline
+     c <- cycleEntry
+     newline
      bs <- blockList
-     return $ DM.TrainingDay d bs
+     return $ DM.TrainingDay d c bs
+
+cycleEntry :: TokenParser (Maybe DM.TrainingCycle)
+cycleEntry = cycleParser
+  where
+     cycleParser = do
+          dashOption
+          colonEntryParser cycle $ do
+               n <- lookahead TokenNone
+               if n 
+               then do
+                    none 
+                    return Nothing
+               else do
+                    newline
+                    s <- colonEntryParser start date
+                    newline
+                    e <- colonEntryParser end date
+                    return $ Just $ DM.TrainingCycle s e 1
+     noneParser = do
+          dashOption 
+          colonEntryParser cycle $ do
+               none
+               return Nothing
 
 blockList :: TokenParser [DM.Block]
 blockList = blockList' []
@@ -597,6 +623,15 @@ time = tokenUnitParser TokenTime "time expected."
 
 calories :: TokenParser ()
 calories = tokenUnitParser TokenCalories "calories expected."
+
+cycle :: TokenParser ()
+cycle = tokenUnitParser TokenCycle "cycle expected."
+
+start :: TokenParser ()
+start = tokenUnitParser TokenStart "start expected."
+
+end :: TokenParser ()
+end = tokenUnitParser TokenEnd "end expected."
 
 increaseRoundsByReps :: TokenParser ()
 increaseRoundsByReps = tokenUnitParser TokenIncreaseRoundsByReps "increase-rounds-by-reps expected."

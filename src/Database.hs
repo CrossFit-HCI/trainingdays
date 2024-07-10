@@ -100,8 +100,8 @@ module Database where
     blockToDoc (Block blockId blockIteration blockMeasure blockNotes subblocks) = undefined    
 
     trainingDayToDoc :: String -> TrainingDay -> Maybe Document
-    trainingDayToDoc athleteId (TrainingDay date []) = Nothing
-    trainingDayToDoc athleteId (TrainingDay date blocks) = undefined
+    trainingDayToDoc athleteId (TrainingDay date cycle []) = Nothing
+    trainingDayToDoc athleteId (TrainingDay date cycle blocks) = undefined
 
     insertTrainingDay :: String -> TrainingDay -> Action IO ()
     insertTrainingDay athleteId trainingDay = undefined

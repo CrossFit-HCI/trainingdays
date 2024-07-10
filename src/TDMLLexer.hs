@@ -16,6 +16,9 @@ data Token = TokenDash
      | TokenBackslash 
      | TokenColon 
      | TokenNone 
+     | TokenCycle
+     | TokenStart
+     | TokenEnd
      | TokenNewline
      | TokenSpace
      | TokenDigit Integer
@@ -75,14 +78,17 @@ lexer ('.':cs) = TokenDot : lexer cs
 lexer ('a':'m':'r':'a':'p':cs) = TokenAmrap : lexer cs
 lexer ('b':'l':'o':'c':'k':cs) = TokenBlock : lexer cs
 lexer ('c':'a':'l':'o':'r':'i':'e':'s':cs) = TokenCalories : lexer cs
+lexer ('c':'y':'c':'l':'e':cs) = TokenCycle : lexer cs
 lexer ('d':'i':'s':'t':'a':'n':'c':'e':cs) = TokenDistance : lexer cs
+lexer ('e':'n':'d':cs) = TokenEnd : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':'c':'a':'p':cs) = TokenForTimeCap : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':cs) = TokenForTime : lexer cs
 lexer ('n':'o':'n':'e':cs) = TokenNone : lexer cs
 lexer ('T':'r':'a':'i':'n':'i':'n':'g':'D':'a':'y':cs) = TokenTrainingDay : lexer cs
-lexer ('s':'u':'b':'b':'l':'o':'c':'k':cs) = TokenSubblock : lexer cs
 lexer ('s':'e':'t':'s':cs) = TokenSets : lexer cs
 lexer ('s':'c':'a':'l':'e':'r':'s':cs) = TokenScalers : lexer cs
+lexer ('s':'t':'a':'r':'t':cs) = TokenStart : lexer cs
+lexer ('s':'u':'b':'b':'l':'o':'c':'k':cs) = TokenSubblock : lexer cs
 lexer ('i':'n':'c':'r':'e':'a':'s':'e':'-':'r':'o':'u':'n':'d':'s':'-':'b':'y':'-':'r':'e':'p':'s':cs) = TokenIncreaseRoundsByReps : lexer cs
 lexer ('i':'t':'e':'r':'a':'t':'i':'o':'n':cs) = TokenIteration : lexer cs
 lexer ('m':'e':'a':'s':'u':'r':'e':'s':cs) = TokenMeasures : lexer cs

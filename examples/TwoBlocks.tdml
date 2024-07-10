@@ -1,4 +1,7 @@
 TrainingDay: 02/23/2024
+- cycle:
+  start: 02/23/2024
+  end: 02/23/2024
 - block: 1
   iteration:
   - sets: 5
