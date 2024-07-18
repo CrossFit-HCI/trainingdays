@@ -165,9 +165,7 @@ trainingDayEntry = colonEntryParser trainingDay $ do
      return $ DM.TrainingDay d c bs
 
 cycleEntry :: TokenParser (Maybe DM.TrainingCycle)
-cycleEntry = cycleParser
-  where
-     cycleParser = do
+cycleEntry = do
           dashOption
           colonEntryParser cycle $ do
                n <- lookahead TokenNone
@@ -180,12 +178,7 @@ cycleEntry = cycleParser
                     s <- colonEntryParser start date
                     newline
                     e <- colonEntryParser end date
-                    return $ Just $ DM.TrainingCycle s e 1
-     noneParser = do
-          dashOption 
-          colonEntryParser cycle $ do
-               none
-               return Nothing
+                    return $ Just $ DM.TrainingCycle s e 1   
 
 blockList :: TokenParser [DM.Block]
 blockList = blockList' []
@@ -278,16 +271,16 @@ blockMeasure = colonEntryParser measure $ (TokenNewline,blockEntryParser) <|> no
 
      blockMeasureEntry = (TokenReps,repsEntry DM.MeasureBlockReps) <|>
                          (TokenWeight,weightEntry DM.MeasureBlockWeight) <|>
-                          (distanceEntry DM.MeasureBlockDistance)
+                         (distanceEntry DM.MeasureBlockDistance)
 
      noneParser = do
                none
                newline
                return DM.NoBlockMeasure
 
-distanceEntry :: (Integer -> a) -> TokenParser a
+distanceEntry :: (Double -> a) -> TokenParser a
 distanceEntry c = colonEntryParser distance $ do
-                    d <- digits
+                    d <- decimal
                     return $ c d
 
 movementsEntry :: TokenParser [DM.Movement]

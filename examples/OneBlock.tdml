@@ -14,6 +14,7 @@ TrainingDay: 02/23/2024
   notes: "subblock notes"
   movements:
   - movement: "clean"
+    equipment: "barbell"
     notes: "Drop the bar after the first clean."
     labels:
     - "weightLifting"

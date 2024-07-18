@@ -29,7 +29,7 @@ module DataModel where
     data Measure = 
           MeasureRepetitions Integer
         | MeasureTime Time
-        | MeasureDistance Integer
+        | MeasureDistance Double
         | MeasureCalories Integer
         | MeasureWeight Double
         deriving (Generic, Show)
@@ -39,7 +39,7 @@ module DataModel where
 
     data Iteration = 
         IterateByReps Integer
-      | IterateByDist Integer
+      | IterateByDist Double
       | IterateByCalories Integer
       deriving (Generic, Show)
 
@@ -47,7 +47,7 @@ module DataModel where
     instance FromJSON Iteration
 
     data Scaler = 
-        ScaleDistance Integer
+        ScaleDistance Double
       | ScaleWeight Double
       | ScaleIncreaseRoundReps Integer
       | ScaleRPE (Integer,Integer)
@@ -156,7 +156,7 @@ module DataModel where
     data BlockMeasure =
           MeasureBlockReps Integer
         | MeasureBlockWeight Double
-        | MeasureBlockDistance Integer
+        | MeasureBlockDistance Double
         | NoBlockMeasure
         deriving (Generic, Show)
 
