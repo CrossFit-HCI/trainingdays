@@ -6,12 +6,13 @@
 {-# HLINT ignore "Eta reduce" #-}
 
 module Database where
-    import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look )
+    import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look, lookup, upsert )
     import Data.Text (pack)
     import DataModel (TrainingDay (..), Block (..), BlockIteration (..), BlockMeasure (..), Subblock (..), Movement (..), Label (Tag), Target (..), Iteration (..), Scaler (..), Measure (..), Date (..), Time (..))
     import Control.Monad.IO.Class (MonadIO)
     import Control.Monad ((>=>))
-
+    import Prelude hiding (lookup)
+    
     -------------------------
     -- Database Connection --  
     -------------------------
@@ -19,7 +20,7 @@ module Database where
     databaseIP = "23.239.16.70"
 
     databaseName :: Database
-    databaseName = pack "training_days"
+    databaseName = pack "training_days_dev"
 
     connectToDB :: IO Pipe
     connectToDB = connect (host databaseIP)
@@ -30,17 +31,27 @@ module Database where
         e <- access pipe master databaseName action
         print e
 
-    selectInsert :: (MonadIO m, MonadFail m) => Collection -> Document -> Action m Value
-    -- ^ Inserts the given Document into Collection if it doesn't already exist. 
-    selectInsert col doc = do
-        query <- findOne $ select doc col
-        case query of
-            Nothing -> insert col doc
-            Just d -> look (pack "_id") d
+    -------------------------
+    -- Database Queries    --
+    -------------------------
 
-    selectInsertAll :: (MonadIO m, MonadFail m) => (a -> Action m Document) -> Collection -> [a] -> Action m [Value]
+    selectInsert :: (MonadIO m, MonadFail m) => Collection -> String -> Document -> Action m Value
+    -- ^ Determines if `doc` is already in the database by selecting on `key`,
+    -- and if it doesn't exist, then inserts it, but if it does exist, updates
+    -- every field besides `key`. Throws an exception if `key` doesn't exist in `doc`.
+    selectInsert col key doc = do
+        (descMaybe :: Maybe String) <- lookup (pack key) doc
+        case descMaybe of
+            Nothing -> error $ "selectInsert: failed to find key "++key
+            Just desc -> do 
+                query <- findOne $ select [pack key =: desc] col 
+                case query of
+                    Nothing -> insert col doc
+                    Just d -> upsert (select [pack key =: desc] col) doc >> look (pack "_id") d
+
+    selectInsertAll :: (MonadIO m, MonadFail m) => (a -> Action m Document) -> Collection -> String -> [a] -> Action m [Value]
     -- ^ Like `selectInsert` but over a list of objects to be inserted.
-    selectInsertAll toDoc col objs = mapM (toDoc >=> selectInsert col) objs
+    selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 
     ---------------------------
     -- Data Model Conversion --  
@@ -91,9 +102,9 @@ module Database where
 
     movementToDoc :: Movement -> Action IO Document
     movementToDoc (Movement description notes labels targets _ _ _ submovements) = do
-        submsIds <- selectInsertAll movementToDoc "movements" submovements
-        labelsIds <- selectInsertAll (return . labelToDoc) "labels" labels
-        targetsIds <- selectInsertAll (return . targetToDoc) "targets" targets
+        submsIds <- selectInsertAll movementToDoc "movements" "description" submovements
+        labelsIds <- selectInsertAll (return . labelToDoc) "labels" "description" labels
+        targetsIds <- selectInsertAll (return . targetToDoc) "targets" "description" targets
 
         return [ "description" =: description,
                 "notes" =: notes,
@@ -117,7 +128,7 @@ module Database where
 
     subblockMovementToDoc :: Movement -> Action IO Document
     subblockMovementToDoc movement@(Movement _ _ _ _ iteration scalers measures _) = do
-        id <- (movementToDoc >=> selectInsert "movement") movement
+        id <- (movementToDoc >=> selectInsert "movement" "description") movement
         return [ "movement" =: id,
                  "iteration" =: iterationToDoc iteration,
                  "scalers" =: map scalerToDoc scalers,
