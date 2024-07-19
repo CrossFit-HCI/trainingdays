@@ -6,9 +6,9 @@
 {-# HLINT ignore "Eta reduce" #-}
 
 module Database where
-    import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look, lookup, upsert )
+    import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look, lookup, upsert, Val (val) )
     import Data.Text (pack)
-    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), BlockMeasure (..), Subblock (..), Movement (..), Label (Tag), Target (..), Iteration (..), Scaler (..), Measure (..), Date (..), Time (..))
+    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), Iteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure)
     import Control.Monad.IO.Class (MonadIO)
     import Control.Monad ((>=>))
     import Prelude hiding (lookup)
@@ -40,7 +40,7 @@ module Database where
     -- and if it doesn't exist, then inserts it, but if it does exist, updates
     -- every field besides `key`. Throws an exception if `key` doesn't exist in `doc`.
     selectInsert col key doc = do
-        (descMaybe :: Maybe String) <- lookup (pack key) doc
+        let descMaybe = (lookup (pack key) doc :: Maybe String)
         case descMaybe of
             Nothing -> error $ "selectInsert: failed to find key "++key
             Just desc -> do 
@@ -94,11 +94,16 @@ module Database where
     scalerToDoc (ScaleRPE (low,high)) = ["description" =: pack "rpe", "value" =: ["low" =: low, "high" =: high]]
 
     measureToDoc :: Measure -> Document
-    measureToDoc (MeasureRepetitions r) = ["description" =: pack "reps", "value" =: r]
-    measureToDoc (MeasureTime t) = ["description" =: pack "time", "value" =: timeToDoc t]
-    measureToDoc (MeasureDistance d) = ["description" =: pack "distance", "value" =: d]
-    measureToDoc (MeasureCalories c) = ["description" =: pack "calories", "value" =: c]
-    measureToDoc (MeasureWeight w) = ["description" =: pack "weight", "value" =: w]
+    measureToDoc (MeasureRepetitions _) = ["description" =: pack "reps"]
+    measureToDoc (MeasureTime _) = ["description" =: pack "time"]
+    measureToDoc (MeasureDistance _) = ["description" =: pack "distance"]
+    measureToDoc (MeasureCalories _) = ["description" =: pack "calories"]
+    measureToDoc (MeasureWeight _) = ["description" =: pack "weight"]
+    -- measureToDoc (MeasureRepetitions r) = ["description" =: pack "reps", "value" =: r]
+    -- measureToDoc (MeasureTime t) = ["description" =: pack "time", "value" =: timeToDoc t]
+    -- measureToDoc (MeasureDistance d) = ["description" =: pack "distance", "value" =: d]
+    -- measureToDoc (MeasureCalories c) = ["description" =: pack "calories", "value" =: c]
+    -- measureToDoc (MeasureWeight w) = ["description" =: pack "weight", "value" =: w]
 
     movementToDoc :: Movement -> Action IO Document
     movementToDoc (Movement description notes labels targets _ _ _ submovements) = do
@@ -111,13 +116,7 @@ module Database where
                 "labels" =: labelsIds,
                 "targets" =: targetsIds,
                 "submovements" =: submsIds
-            ]
-
-    blockMeasureToDoc :: BlockMeasure -> Document
-    blockMeasureToDoc (MeasureBlockReps r) = ["description" =: pack "reps", "value" =: r]
-    blockMeasureToDoc (MeasureBlockWeight w) = ["description" =: pack "weight", "value" =: w]
-    blockMeasureToDoc (MeasureBlockDistance d) = ["description" =: pack "distance", "value" =: d]
-    blockMeasureToDoc NoBlockMeasure = ["description" =: pack "none", "value" =: pack "none"]
+            ]    
 
     blockIterationToDoc :: BlockIteration -> Document
     blockIterationToDoc (Amrap t) = ["description" =: pack "amrap", "value" =: timeToDoc t]
@@ -126,22 +125,44 @@ module Database where
     blockIterationToDoc (Sets s) = ["description" =: pack "sets", "value" =: s]
     blockIterationToDoc NoBlockIteration = ["description" =: pack "none", "value" =: pack "none"]
 
+    measureToValue :: Measure -> Value
+    measureToValue (MeasureRepetitions r) = val r
+    measureToValue (MeasureTime t) = val $ timeToDoc t
+    measureToValue (MeasureDistance d) = val d
+    measureToValue (MeasureCalories c) = val c
+    measureToValue (MeasureWeight w) = val w                
+
+    measureToIdValue :: Measure -> (Action IO) Document
+    measureToIdValue m = do
+        let v = measureToValue m
+        id <- selectInsert "measure" "description" (measureToDoc m)
+        return ["id" =: id, "value" =: v]
+
+    measureToIdValueMany :: [Measure] -> Action IO [Document]
+    measureToIdValueMany ms = mapM measureToIdValue ms      
+
     subblockMovementToDoc :: Movement -> Action IO Document
     subblockMovementToDoc movement@(Movement _ _ _ _ iteration scalers measures _) = do
         id <- (movementToDoc >=> selectInsert "movement" "description") movement
+        measuresDoc <- measureToIdValueMany measures
         return [ "movement" =: id,
                  "iteration" =: iterationToDoc iteration,
                  "scalers" =: map scalerToDoc scalers,
-                 "measures" =: map measureToDoc measures
+                 "measures" =: measuresDoc
             ]
+
+    subblockMeasureToIdValue :: BlockMeasure -> Action IO Document
+    subblockMeasureToIdValue Nothing = return []
+    subblockMeasureToIdValue (Just m) = measureToIdValue m
 
     subblockToDoc :: Subblock -> Action IO Document
     subblockToDoc (Subblock subblockId subblockIteration subblockMeasure subblockNotes subblockMovements ) = do
         movements <- mapM subblockMovementToDoc subblockMovements
+        measureDoc <- subblockMeasureToIdValue subblockMeasure
         return [
             "id" =: subblockId,
             "iteration" =: blockIterationToDoc subblockIteration,
-            "measure" =: blockMeasureToDoc subblockMeasure,
+            "measure" =: measureDoc, 
             "notes" =: pack subblockNotes,
             "movements" =: movements
          ]

@@ -153,16 +153,8 @@ module DataModel where
     instance ToJSON BlockIteration
     instance FromJSON BlockIteration
 
-    data BlockMeasure =
-          MeasureBlockReps Integer
-        | MeasureBlockWeight Double
-        | MeasureBlockDistance Double
-        | NoBlockMeasure
-        deriving (Generic, Show)
-
-    instance ToJSON BlockMeasure
-    instance FromJSON BlockMeasure
-
+    type BlockMeasure = Maybe Measure
+  
     data Block = Block {
         blockId :: Integer,
         blockIteration :: BlockIteration,   
