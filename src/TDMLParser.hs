@@ -400,7 +400,7 @@ range = do
      then return (low,high)
      else parseError "Range expected"
 
-iterationEntry :: TokenParser DM.Iteration
+iterationEntry :: TokenParser DM.MovementIteration
 iterationEntry = dashEntry iteration iterationElement
  where
      iterationElement = (TokenReps,repsEntry DM.IterateByReps) <|> 

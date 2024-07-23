@@ -8,7 +8,7 @@
 module Database where
     import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look, lookup, upsert, Val (val) )
     import Data.Text (pack)
-    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), Iteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure)
+    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..), Athlete (..))
     import Control.Monad.IO.Class (MonadIO)
     import Control.Monad ((>=>))
     import Prelude hiding (lookup)
@@ -82,7 +82,7 @@ module Database where
             targetToString :: Target -> String
             targetToString (Target t) = t
 
-    iterationToDoc :: Iteration -> Document
+    iterationToDoc :: MovementIteration -> Document
     iterationToDoc (IterateByReps r)= ["description" =: pack "reps", "value" =: r]
     iterationToDoc (IterateByDist d) = ["description" =: pack "distance", "value" =: d]
     iterationToDoc (IterateByCalories c) = ["description" =: pack "calories", "value" =: c]
@@ -99,11 +99,6 @@ module Database where
     measureToDoc (MeasureDistance _) = ["description" =: pack "distance"]
     measureToDoc (MeasureCalories _) = ["description" =: pack "calories"]
     measureToDoc (MeasureWeight _) = ["description" =: pack "weight"]
-    -- measureToDoc (MeasureRepetitions r) = ["description" =: pack "reps", "value" =: r]
-    -- measureToDoc (MeasureTime t) = ["description" =: pack "time", "value" =: timeToDoc t]
-    -- measureToDoc (MeasureDistance d) = ["description" =: pack "distance", "value" =: d]
-    -- measureToDoc (MeasureCalories c) = ["description" =: pack "calories", "value" =: c]
-    -- measureToDoc (MeasureWeight w) = ["description" =: pack "weight", "value" =: w]
 
     movementToDoc :: Movement -> Action IO Document
     movementToDoc (Movement description notes labels targets _ _ _ submovements) = do
@@ -132,47 +127,144 @@ module Database where
     measureToValue (MeasureCalories c) = val c
     measureToValue (MeasureWeight w) = val w                
 
-    measureToIdValue :: Measure -> (Action IO) Document
+    measureToIdValue :: Measure -> Action IO Document
     measureToIdValue m = do
         let v = measureToValue m
         id <- selectInsert "measure" "description" (measureToDoc m)
         return ["id" =: id, "value" =: v]
 
     measureToIdValueMany :: [Measure] -> Action IO [Document]
-    measureToIdValueMany ms = mapM measureToIdValue ms      
+    measureToIdValueMany = mapM measureToIdValue
+
+    iterationToValue :: MovementIteration -> Value
+    iterationToValue (IterateByReps r)  = val r
+    iterationToValue (IterateByDist d) = val d
+    iterationToValue (IterateByCalories c) = val c
+
+    iterationToIdValue :: MovementIteration -> Action IO Document
+    iterationToIdValue i = do
+        let v = iterationToValue i
+        id <- selectInsert "movement-iteration" "description" (iterationToDoc i)
+        return ["id" =: id, "value" =: v]
+
+    iterationToIdValueMany :: [MovementIteration] -> Action IO [Document]
+    iterationToIdValueMany  = mapM iterationToIdValue
+ 
+    scalerToValue :: Scaler -> Value
+    scalerToValue (ScaleDistance d) = val d
+    scalerToValue (ScaleWeight w) = val w
+    scalerToValue (ScaleIncreaseRoundReps r) = val r
+    scalerToValue (ScaleRPE (low,high)) = val ["low" =: low, "high" =: high]
+
+    scalerToIdValue :: Scaler -> Action IO Document
+    scalerToIdValue s = do
+        let v = scalerToValue s
+        id <- selectInsert "scaler" "description" (scalerToDoc s)
+        return ["id" =: id, "value" =: v]
+
+    scalerToIdValueMany :: [Scaler] -> Action IO [Document]
+    scalerToIdValueMany = mapM scalerToIdValue
 
     subblockMovementToDoc :: Movement -> Action IO Document
     subblockMovementToDoc movement@(Movement _ _ _ _ iteration scalers measures _) = do
         id <- (movementToDoc >=> selectInsert "movement" "description") movement
         measuresDoc <- measureToIdValueMany measures
+        iterationDoc <- iterationToIdValue iteration
+        scalersDoc <- scalerToIdValueMany scalers
+
         return [ "movement" =: id,
-                 "iteration" =: iterationToDoc iteration,
-                 "scalers" =: map scalerToDoc scalers,
+                 "iteration" =: iterationDoc,
+                 "scalers" =: scalersDoc,
                  "measures" =: measuresDoc
             ]
 
-    subblockMeasureToIdValue :: BlockMeasure -> Action IO Document
-    subblockMeasureToIdValue Nothing = return []
-    subblockMeasureToIdValue (Just m) = measureToIdValue m
+    blockMeasureToIdValue :: BlockMeasure -> Action IO Document
+    blockMeasureToIdValue Nothing = return []
+    blockMeasureToIdValue (Just m) = measureToIdValue m
+
+    blockIterationToValue :: BlockIteration -> Value
+    blockIterationToValue (Amrap t) = val $ timeToDoc t
+    blockIterationToValue ForTime = val $ pack "for time"
+    blockIterationToValue (ForTimeCap t) = val $ timeToDoc t
+    blockIterationToValue (Sets s) = val s
+    blockIterationToValue NoBlockIteration = val $ pack "none"
+
+    blockIterationToIdValue :: BlockIteration -> Action IO Document
+    blockIterationToIdValue b = do
+        let v = blockIterationToValue b
+        id <- selectInsert "block-iteration" "description" (blockIterationToDoc b)
+        return ["id" =: id, "value" =: v]
 
     subblockToDoc :: Subblock -> Action IO Document
-    subblockToDoc (Subblock subblockId subblockIteration subblockMeasure subblockNotes subblockMovements ) = do
+    subblockToDoc (Subblock subblockId subblockIteration subblockMeasure subblockNotes subblockMovements) = do
         movements <- mapM subblockMovementToDoc subblockMovements
-        measureDoc <- subblockMeasureToIdValue subblockMeasure
+        measureDoc <- blockMeasureToIdValue subblockMeasure
+        iterationDoc <- blockIterationToIdValue subblockIteration
         return [
             "id" =: subblockId,
-            "iteration" =: blockIterationToDoc subblockIteration,
+            "iteration" =: iterationDoc,
             "measure" =: measureDoc, 
             "notes" =: pack subblockNotes,
             "movements" =: movements
          ]
 
     blockToDoc :: Block -> Action IO Document
-    blockToDoc (Block blockId blockIteration blockMeasure blockNotes subblocks) = undefined
+    blockToDoc (Block blockId blockIteration blockMeasure blockNotes subblocks) = do
+        iterationDoc <- blockIterationToIdValue blockIteration
+        measureDoc <- blockMeasureToIdValue blockMeasure
+        subblocksDoc <- mapM subblockToDoc subblocks
+        return ["id" =: blockId,
+                "iteration" =: iterationDoc,
+                "measure" =: measureDoc,
+                "notes" =: pack blockNotes,
+                "subblocks" =: subblocksDoc]
 
-    trainingDayToDoc :: String -> TrainingDay -> Maybe Document
-    trainingDayToDoc athleteId (TrainingDay date cycle []) = Nothing
-    trainingDayToDoc athleteId (TrainingDay date cycle blocks) = undefined
+    cycleToDoc :: Maybe TrainingCycle -> Document
+    cycleToDoc Nothing = ["description" =: pack "none", "value" =: pack "none"]
+    cycleToDoc (Just (TrainingCycle start end length)) = 
+        ["start-date" =: dateToDoc start,
+         "end-date" =: dateToDoc end,
+         "length" =: length]
 
-    insertTrainingDay :: String -> TrainingDay -> Action IO ()
-    insertTrainingDay athleteId trainingDay = undefined
+    trainingDayToDoc :: Value -> TrainingDay -> Action IO Document
+    trainingDayToDoc athleteId (TrainingDay date cycle blocks) = do
+        blocksDoc <- mapM blockToDoc blocks
+        return ["athlete_id" =: athleteId,
+                "date" =: dateToDoc date,
+                "cycle" =: cycleToDoc cycle,
+                "blocks" =: blocksDoc]
+
+    trainingDayToId :: Value -> TrainingDay -> Action IO Value
+    trainingDayToId athleteId trainingDay = 
+        trainingDayToDoc athleteId trainingDay >>= selectInsert "training-days" "athlete_id"
+
+    trainingJournalToDoc :: Value -> TrainingJournal -> Action IO Document
+    trainingJournalToDoc athleteId (TrainingJournal title description training) = do
+        trainingIds <- mapM (trainingDayToId athleteId) training
+        return [ "athlete_id" =: athleteId,
+                 "title" =: pack title,
+                 "description" =: pack description,
+                 "training" =: trainingIds
+               ]
+
+    insertAthlete :: Athlete -> Action IO ()
+    insertAthlete (Athlete first last email journals) = do
+        -- 1. Select on email to determine if the athlete is already in the DB.
+        query <- findOne $ select ["email" =: email] "athletes"
+        case query of            
+            -- 2. If they are, then update the journals using the existing athlete_id.
+            Just d -> do
+                let athleteIdM = look (pack "_id") d
+                case athleteIdM of
+                    Just athleteId -> do
+                        journalsDoc <- mapM (trainingJournalToDoc athleteId) journals
+                        let athleteDoc = ["first-name" =: first, "last-name" =: last, "email" =: email, "journals" =: journalsDoc]
+                        upsert (select ["_id" =: athleteId] "athletes") athleteDoc
+                    Nothing -> error "insertAthlete: Failed to find athlete_id."
+            -- 3. If they are not, then add them with an empty journals entry and return the id.
+            Nothing -> do
+                athleteId <- insert "athletes" ["first-name" =: first, "last-name" =: last, "email" =: email]                
+                -- 4. Using the id, build the journal's doc and insert it using the id from 3.               
+                journalsDoc <- mapM (trainingJournalToDoc athleteId) journals
+                let athleteDoc = ["first-name" =: first, "last-name" =: last, "email" =: email, "journals" =: journalsDoc]
+                upsert (select ["_id" =: athleteId] "athletes") athleteDoc

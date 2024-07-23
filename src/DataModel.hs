@@ -37,14 +37,14 @@ module DataModel where
     instance ToJSON Measure
     instance FromJSON Measure
 
-    data Iteration = 
+    data MovementIteration = 
         IterateByReps Integer
       | IterateByDist Double
       | IterateByCalories Integer
       deriving (Generic, Show)
 
-    instance ToJSON Iteration
-    instance FromJSON Iteration
+    instance ToJSON MovementIteration
+    instance FromJSON MovementIteration
 
     data Scaler = 
         ScaleDistance Double
@@ -74,7 +74,7 @@ module DataModel where
         notes :: String,
         labels :: [Label],
         targets :: [Target],
-        iteration :: Iteration,
+        iteration :: MovementIteration,
         scalers :: [Scaler],
         measures :: [Measure],
         submovements :: [Movement]
@@ -88,7 +88,7 @@ module DataModel where
         | NotesParam String
         | LabelsParam [Label]
         | TargetsParam [Target]
-        | IterationParam Iteration
+        | IterationParam MovementIteration
         | ScalersParam [Scaler]
         | MeasuresParam [Measure]
         | SubmovementsParam [[MovementParams]]
