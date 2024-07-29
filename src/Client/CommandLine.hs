@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
-module CommandLine where
+module Client.CommandLine where
     import System.Console.Haskeline
 
     main :: IO ()

@@ -1,4 +1,6 @@
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module Nutrition.MacroCalculator where
     data Gender = Male | Female
         deriving (Show, Eq)
@@ -16,12 +18,6 @@ module Nutrition.MacroCalculator where
             Female -> bmr' - 161
         where 
             bmr' = (10 * weight) + (6.25 * height) - (5 * age)
-
-    calcHBBMR :: Gender -> Double -> Double -> Double -> Double
-    calcHBBMR gender age height weight = 
-        case gender of
-            Male -> undefined
-            Female -> (9.5634 * weight) + (1.8496 * height) - (4.6756 * age) + 66.473
 
     macroCalculator :: IO ()
     macroCalculator = loop 
@@ -50,16 +46,16 @@ module Nutrition.MacroCalculator where
                 putStr "calories to cut from tdee: "
                 cutCals <- getLine >>= \s -> return (read s :: Double)
                 let cutTdee = tdee - cutCals                
-                putStrLn $ "Macro Breakdown Chart"
-                putStrLn $ "25-55 : Carbs"
-                putStrLn $ "25-50 : Protein"
-                putStrLn $ "20-35 : Fat"
-                let precentTotal = 100
-                putStr $ "carbs percentage ("++show precentTotal++" left): "
+                putStrLn "Macro Breakdown Chart"
+                putStrLn "25-55 : Carbs"
+                putStrLn "25-50 : Protein"
+                putStrLn "20-35 : Fat"
+                let percentTotal = 100
+                putStr $ "carbs percentage ("++show percentTotal++" left): "
                 carbPercent <- getLine >>= \s -> return (read s :: Double)
-                putStr $ "proten percentage ("++show (precentTotal - carbPercent)++" left): "
+                putStr $ "protein percentage ("++show (percentTotal - carbPercent)++" left): "
                 proteinPercent <- getLine >>= \s -> return (read s :: Double)
-                putStr $ "fat percentage ("++show (precentTotal - carbPercent - proteinPercent)++" left): "
+                putStr $ "fat percentage ("++show (percentTotal - carbPercent - proteinPercent)++" left): "
                 fatPercent <- getLine >>= \s -> return (read s :: Double)
                 putStrLn ""
                 putStrLn $ "Athlete's BMR: "++(show bmr)

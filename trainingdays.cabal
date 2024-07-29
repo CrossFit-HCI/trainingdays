@@ -25,12 +25,12 @@ source-repository head
 
 library
   exposed-modules:
-      CommandLine
+      Client.CommandLine
+      Client.TDMLLexer
+      Client.TDMLParser
       Database
       DataModel
       Nutrition.MacroCalculator
-      TDMLLexer
-      TDMLParser
   other-modules:
       Paths_trainingdays
   autogen-modules:

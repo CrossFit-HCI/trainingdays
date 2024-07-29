@@ -2,13 +2,12 @@
 {-# HLINT ignore "Avoid lambda using `infix`" #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
-module TDMLLexer (Token(..),
-                  TokenData(..),
-                  lexer,
-                  getTokenData,
-                  compareTokens,
-                  digitsToInt) where
-
+module Client.TDMLLexer (Token(..),
+                         TokenData(..),
+                         lexer,
+                         getTokenData,
+                         compareTokens,
+                         digitsToInt) where
 import Data.Char
 
 data Token = TokenDash
