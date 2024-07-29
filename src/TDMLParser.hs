@@ -33,7 +33,7 @@ parse s = do
      f <- (readFile s)
      let cs = lexer f
      parser cs
-     
+
 
 parseError :: String -> TokenParser a
 parseError msg = do
@@ -169,16 +169,16 @@ cycleEntry = do
           dashOption
           colonEntryParser cycle $ do
                n <- lookahead TokenNone
-               if n 
+               if n
                then do
-                    none 
+                    none
                     return Nothing
                else do
                     newline
                     s <- colonEntryParser start date
                     newline
                     e <- colonEntryParser end date
-                    return $ Just $ DM.TrainingCycle s e 1   
+                    return $ Just $ DM.TrainingCycle s e 1
 
 blockList :: TokenParser [DM.Block]
 blockList = blockList' []
@@ -233,7 +233,7 @@ subblockEntry = colonEntryParser subblock $ do
           blockMovements <- movementsEntry
           return $ DM.Subblock blockID blockIteration blockMeasure blockNotes blockMovements
 
--- TODO: Need to add NoBlockIteration
+
 blockIterationEntry :: TokenParser DM.BlockIteration
 blockIterationEntry = dashEntry iteration iterationElement
   where
@@ -269,14 +269,14 @@ blockMeasure = colonEntryParser measure $ (TokenNewline,blockEntryParser) <|> no
                newline
                return m
 
-     blockMeasureEntry = (TokenReps,repsEntry DM.MeasureBlockReps) <|>
-                         (TokenWeight,weightEntry DM.MeasureBlockWeight) <|>
-                         (distanceEntry DM.MeasureBlockDistance)
+     blockMeasureEntry = ((TokenReps,repsEntry DM.MeasureRepetitions) <|>
+                         (TokenWeight,weightEntry DM.MeasureWeight) <|>
+                         (distanceEntry DM.MeasureDistance)) <&> Just
 
      noneParser = do
                none
                newline
-               return DM.NoBlockMeasure
+               return Nothing
 
 distanceEntry :: (Double -> a) -> TokenParser a
 distanceEntry c = colonEntryParser distance $ do
@@ -375,7 +375,7 @@ scalerElement :: TokenParser (DM.Scaler)
 scalerElement = (TokenDistance,distanceEntry DM.ScaleDistance) <|>
                 (TokenWeight,weightEntry DM.ScaleWeight) <|>
                 (TokenIncreaseRoundsByReps,increaseRoundsByRepsEntry) <|>
-                (TokenRPE,rpeEntry DM.ScaleRPE) <|>                  
+                (TokenRPE,rpeEntry DM.ScaleRPE) <|>
                 parseError "Incorrect scaler."
 
 increaseRoundsByRepsEntry :: TokenParser DM.Scaler
@@ -403,7 +403,7 @@ range = do
 iterationEntry :: TokenParser DM.MovementIteration
 iterationEntry = dashEntry iteration iterationElement
  where
-     iterationElement = (TokenReps,repsEntry DM.IterateByReps) <|> 
+     iterationElement = (TokenReps,repsEntry DM.IterateByReps) <|>
                         (TokenDistance,distanceEntry DM.IterateByDist) <|>
                         (TokenCalories,calsEntry DM.IterateByCalories) <|>
                         parseError "Expecting iteration entry."

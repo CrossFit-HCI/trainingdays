@@ -25,8 +25,10 @@ source-repository head
 
 library
   exposed-modules:
+      CommandLine
       Database
       DataModel
+      Nutrition.MacroCalculator
       TDMLLexer
       TDMLParser
   other-modules:
@@ -40,6 +42,7 @@ library
       aeson
     , array
     , base >=4.7 && <5
+    , haskeline
     , mongoDB
     , mtl
     , text
@@ -58,6 +61,7 @@ executable trainingdays-exe
       aeson
     , array
     , base >=4.7 && <5
+    , haskeline
     , mongoDB
     , mtl
     , text
@@ -78,6 +82,7 @@ test-suite trainingdays-test
       aeson
     , array
     , base >=4.7 && <5
+    , haskeline
     , mongoDB
     , mtl
     , text

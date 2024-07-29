@@ -26,6 +26,7 @@ dependencies:
 - mtl
 - mongoDB
 - text
+- haskeline
 
 ghc-options:
 - -Wall
