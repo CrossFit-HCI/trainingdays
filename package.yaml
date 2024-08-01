@@ -27,6 +27,8 @@ dependencies:
 - mongoDB
 - text
 - haskeline
+- unix
+- directory
 
 ghc-options:
 - -Wall

@@ -42,10 +42,12 @@ library
       aeson
     , array
     , base >=4.7 && <5
+    , directory
     , haskeline
     , mongoDB
     , mtl
     , text
+    , unix
   default-language: Haskell2010
 
 executable trainingdays-exe
@@ -61,11 +63,13 @@ executable trainingdays-exe
       aeson
     , array
     , base >=4.7 && <5
+    , directory
     , haskeline
     , mongoDB
     , mtl
     , text
     , trainingdays
+    , unix
   default-language: Haskell2010
 
 test-suite trainingdays-test
@@ -82,9 +86,11 @@ test-suite trainingdays-test
       aeson
     , array
     , base >=4.7 && <5
+    , directory
     , haskeline
     , mongoDB
     , mtl
     , text
     , trainingdays
+    , unix
   default-language: Haskell2010
