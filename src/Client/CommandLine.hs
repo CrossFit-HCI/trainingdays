@@ -26,31 +26,31 @@ module Client.CommandLine where
         deriving (Show)
 
     cmdToString :: Command -> String
-    cmdToString Quit = "quit"
-    cmdToString ShowConfig = "show config"
+    cmdToString Quit             = "quit"
+    cmdToString ShowConfig       = "show config"
     cmdToString (SetFirstName _) = "set firstname"
-    cmdToString (SetLastName _) = "set lastname"
-    cmdToString (SetEmail _) = "set email"
+    cmdToString (SetLastName _)  = "set lastname"
+    cmdToString (SetEmail _)     = "set email"
 
     parseCmd :: String -> Maybe Command
     parseCmd "quit" = Just Quit    
-    parseCmd ('s':'e':'t':' ':rest) = mkSetCmd . (second trimWhitespace) $ break (== ' ') rest
+    parseCmd ('s':'e':'t':' ':rest) = mkSetCmd . (second trimWhitespace) $ break (== ' ') $ trimWhitespace rest
         where
             mkSetCmd ("firstname", f) = Just $ SetFirstName f
-            mkSetCmd ("lastname", l) = Just $ SetLastName l
-            mkSetCmd ("email", e) = Just $ SetEmail e
-            mkSetCmd _ = Nothing
+            mkSetCmd ("lastname", l)  = Just $ SetLastName l
+            mkSetCmd ("email", e)     = Just $ SetEmail e
+            mkSetCmd _                = Nothing
     parseCmd ('s':'h':'o':'w':' ':rest) = mkShowCmd . trimWhitespace $ rest
         where
             mkShowCmd "config" = Just ShowConfig
-            mkShowCmd _ = Nothing            
+            mkShowCmd _        = Nothing            
     parseCmd _ = Nothing
 
     cmdValue :: Command -> String
     cmdValue (SetFirstName f) = f
-    cmdValue (SetLastName l) = l
-    cmdValue (SetEmail e) = e
-    cmdValue _ = ""
+    cmdValue (SetLastName l)  = l
+    cmdValue (SetEmail e)     = e
+    cmdValue _                = ""
 
     data Property =
           FirstName String
@@ -113,6 +113,7 @@ module Client.CommandLine where
 
     returnError ::Error -> (Result a)
     returnError = Result . return . Left
+
     instance MonadIO Result where
       liftIO = lift
 
