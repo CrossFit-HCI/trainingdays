@@ -6,19 +6,20 @@ module Client.CommandLine where
     import Control.Monad.IO.Class (liftIO)
     import Data.Char (isSpace)
     import Data.List (dropWhileEnd)
-    import System.Posix.Files (fileExist)
     import Control.Exception (tryJust)
     import System.IO.Error (isDoesNotExistError)
     import System.Directory (getHomeDirectory)
     import Control.Monad.Trans (MonadIO)
     import Data.Functor ((<&>))
     import Control.Monad (guard)
-
+    import Data.Bifunctor (second)
+    
     trimWhitespace :: String -> String
     trimWhitespace = (dropWhileEnd isSpace) . (dropWhile isSpace)
 
     data Command =
           Quit
+        | ShowConfig 
         | SetFirstName String
         | SetLastName String
         | SetEmail String
@@ -26,16 +27,24 @@ module Client.CommandLine where
 
     cmdToString :: Command -> String
     cmdToString Quit = "quit"
+    cmdToString ShowConfig = "show config"
     cmdToString (SetFirstName _) = "set firstname"
     cmdToString (SetLastName _) = "set lastname"
     cmdToString (SetEmail _) = "set email"
 
-    mkCmd :: String -> String -> Maybe Command
-    mkCmd "quit" _ = Just Quit
-    mkCmd "set firstname" f = Just $ SetFirstName f
-    mkCmd "set lastname" l = Just $ SetLastName l
-    mkCmd "set email" e = Just $ SetEmail e
-    mkCmd _ _ = Nothing
+    parseCmd :: String -> Maybe Command
+    parseCmd "quit" = Just Quit    
+    parseCmd ('s':'e':'t':' ':rest) = mkSetCmd . (second trimWhitespace) $ break (== ' ') rest
+        where
+            mkSetCmd ("firstname", f) = Just $ SetFirstName f
+            mkSetCmd ("lastname", l) = Just $ SetLastName l
+            mkSetCmd ("email", e) = Just $ SetEmail e
+            mkSetCmd _ = Nothing
+    parseCmd ('s':'h':'o':'w':' ':rest) = mkShowCmd . trimWhitespace $ rest
+        where
+            mkShowCmd "config" = Just ShowConfig
+            mkShowCmd _ = Nothing            
+    parseCmd _ = Nothing
 
     cmdValue :: Command -> String
     cmdValue (SetFirstName f) = f
@@ -79,7 +88,7 @@ module Client.CommandLine where
     setProp (LastName new) ((LastName _):ps)   = (LastName new):ps
     setProp (Email new) ((Email _):ps)         = (Email new):ps
     setProp (AthleteID new) ((AthleteID _):ps) = (AthleteID new):ps
-    setProp prop (_:ps) = setProp prop ps
+    setProp prop (p:ps) = p:setProp prop ps
     setProp prop [] = [prop]
 
     propsToString :: [Property] -> String
@@ -119,20 +128,29 @@ module Client.CommandLine where
 
     main :: IO ()
     main = do
-        confM <- runResult readConfFile
-        either print (runInputT defaultSettings . loop) confM
+        homedirM <- runResult getHomeDir
+        case homedirM of
+            Left _ -> putStrLn "Fatal: Failed to find the home directory."
+            Right homedir -> do confM <- runResult readConfFile
+                                either (\_ -> runInputT (settings homedir) (loop [])) (runInputT (settings homedir) . loop) confM
         where
+            settings homedir = Settings {
+                complete       = completeFilename,
+                historyFile    = Just $ homedir ++ "/.tdr.trainingdays.history",
+                autoAddHistory = True
+            }
+
             loop :: [Property] -> InputT IO ()
             loop conf = do
-                minput <- getInputLine "% "
+                minput <- getInputLine "trd> "
                 case minput of
                     Nothing -> loop conf
                     Just input -> do let i = trimWhitespace input
                                      if i == ""
                                      then loop conf
-                                     else do let cmdM = parseCommand i
-                                             outputStrLn $ "Parsed Input: " ++ show cmdM
+                                     else do let cmdM = parseCmd i                                             
                                              case cmdM of
+                                                 Just Quit -> return ()
                                                  Just cmd -> do r <- liftIO $ runResult (handleCommand conf cmd)
                                                                 case r of
                                                                     Left e -> liftIO . putStrLn $ "Error: "++(show e)
@@ -142,16 +160,13 @@ module Client.CommandLine where
 
     handleCommand :: [Property] -> Command -> Result [Property]
     handleCommand conf Quit             = return conf
+    handleCommand conf ShowConfig       = do filePath <- configFile 
+                                             liftIO . putStrLn $ "Configuration File: " ++ filePath
+                                             liftIO . putStr $ propsToString conf
+                                             return conf
     handleCommand conf (SetFirstName f) = writePropToConfFile conf (FirstName f)
     handleCommand conf (SetLastName l)  = writePropToConfFile conf (LastName l)
     handleCommand conf (SetEmail e)     = writePropToConfFile conf (Email e)
-
-    parseCommand :: String -> Maybe Command
-    parseCommand (':':rest) = mkCmd cmd value
-        where
-            (cmd',value') = break (== ' ') rest
-            (cmd,value) = (trimWhitespace cmd',trimWhitespace value')
-    parseCommand _ = Nothing
 
     getHomeDir :: Result String
     getHomeDir = do r <- liftIO $ tryJust (guard . isDoesNotExistError) getHomeDirectory
@@ -162,10 +177,7 @@ module Client.CommandLine where
     configFile :: Result FilePath
     configFile = do homedir <- getHomeDir
                     let filePath = homedir ++ "/.trainingdays"
-                    e <- liftIO $ fileExist filePath
-                    if e
-                    then return filePath
-                    else returnError FileDoesNotExist
+                    return filePath
 
     writePropToConfFile :: [Property] -> Property -> Result [Property]
     writePropToConfFile conf prop = do let newProps = setProp prop conf
