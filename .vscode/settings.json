@@ -5,6 +5,7 @@
         "Cals",
         "carb",
         "firstname",
+        "githubuser",
         "Haskeline",
         "Jeor",
         "lastname",
@@ -12,9 +13,16 @@
         "minput",
         "objs",
         "precent",
+        "rtsopts",
         "subblocks",
         "subms",
         "tdee",
-        "upsert"
+        "upsert",
+        "Wcompat",
+        "Widentities",
+        "Wincomplete",
+        "Wmissing",
+        "Wpartial",
+        "Wredundant"
     ]
 }
