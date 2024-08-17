@@ -4,32 +4,91 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Eta reduce" #-}
+{-# LANGUAGE LambdaCase #-}
+{-# HLINT ignore "Redundant $" #-}
 
 module Database where
-    import Database.MongoDB ( connect, host, access, master, Document, Pipe, Action, Database, (=:), Collection, Value (..), findOne, insert, Select (select), look, lookup, upsert, Val (val) )
-    import Data.Text (pack)
+    import Database.MongoDB
+        ( access,
+        master,
+        Document,
+        Pipe,
+        Action,
+        Database,
+        (=:),
+        Collection,
+        Value(..),
+        findOne,
+        insert,
+        Select(select),
+        look,
+        lookup,
+        upsert,
+        Val(val),
+        primary,
+        secondaryOk )
+    import Data.Text (pack, unpack)
     import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..), Athlete (..))
-    import Control.Monad.IO.Class (MonadIO)
+    import Control.Monad.IO.Class (MonadIO (liftIO))
     import Control.Monad ((>=>))
     import Prelude hiding (lookup)
+    import Control.Exception (SomeException(SomeException))
+    import qualified Data.Text as T
+    import Database.MongoDB.Connection (openReplicaSetSRV')
+    import Control.Exception.Base (try)
+    import ResultST (ResultST, Error (ParseError, DBError), throwError, Result)
+    import Utils (maybeCase)
+    import Database.MongoDB.Query (auth)
     
-    -------------------------
-    -- Database Connection --  
-    -------------------------
-    databaseIP :: String
-    databaseIP = "23.239.16.70"
+    type StoreDB = Pipe
+    type ResultDB a = ResultST StoreDB a
 
     databaseName :: Database
     databaseName = pack "training_days_dev"
 
-    connectToDB :: IO Pipe
-    connectToDB = connect (host databaseIP)
+    -------------------------
+    -- Database Connection --  
+    -------------------------
 
-    runAction :: Show a => Action IO a -> IO ()
-    runAction action = do
-        pipe <- connectToDB
-        e <- access pipe master databaseName action
-        print e
+    data MongoAtlas = MongoAtlas {
+        atlas_host :: T.Text,
+        atlas_user :: T.Text,
+        atlas_password :: T.Text
+    }
+
+    extractMongoAtlasCredentials :: T.Text -> Result MongoAtlas
+    extractMongoAtlasCredentials cs =
+        let s   = T.drop 14 cs
+            us' = T.splitOn ":" s
+        in case us' of
+            [u,s'] -> case T.splitOn "@" s' of
+                        [p,h] -> return $ MongoAtlas h u p
+                        _ -> throwError . ParseError $ parseErrorMsg
+            _ -> throwError . ParseError $ parseErrorMsg
+        where
+            parseErrorMsg = "extractMongoAtlasCredentials: Failed to parse credentials from input"    
+
+    connectAtlas :: T.Text -> Result Pipe
+    connectAtlas host = do        
+        repset <- liftIO . openReplicaSetSRV' . unpack $ host
+        ps <- liftIO $ primaryOrSecondary repset
+        maybeCase ps 
+            (throwError . DBError $ "Unable to acquire pipe from MongoDB Atlas' replicaset")
+            return
+            
+        where
+            primaryOrSecondary rep =
+                try (primary rep) >>= \case
+                Left (SomeException err) -> do
+                    try (secondaryOk rep) >>= \case
+                        Left (SomeException _) -> pure Nothing
+                        Right pipe -> pure $ Just pipe
+                Right pipe -> pure $ Just pipe
+
+    authAtlas :: T.Text -> T.Text -> Pipe -> IO Bool
+    authAtlas username password pipe = 
+        access pipe master "admin" $
+            auth username password
 
     -------------------------
     -- Database Queries    --
@@ -43,8 +102,8 @@ module Database where
         let descMaybe = (lookup (pack key) doc :: Maybe String)
         case descMaybe of
             Nothing -> error $ "selectInsert: failed to find key "++key
-            Just desc -> do 
-                query <- findOne $ select [pack key =: desc] col 
+            Just desc -> do
+                query <- findOne $ select [pack key =: desc] col
                 case query of
                     Nothing -> insert col doc
                     Just d -> upsert (select [pack key =: desc] col) doc >> look (pack "_id") d
@@ -111,7 +170,7 @@ module Database where
                 "labels" =: labelsIds,
                 "targets" =: targetsIds,
                 "submovements" =: submsIds
-            ]    
+            ]
 
     blockIterationToDoc :: BlockIteration -> Document
     blockIterationToDoc (Amrap t) = ["description" =: pack "amrap", "value" =: timeToDoc t]
@@ -125,7 +184,7 @@ module Database where
     measureToValue (MeasureTime t) = val $ timeToDoc t
     measureToValue (MeasureDistance d) = val d
     measureToValue (MeasureCalories c) = val c
-    measureToValue (MeasureWeight w) = val w                
+    measureToValue (MeasureWeight w) = val w
 
     measureToIdValue :: Measure -> Action IO Document
     measureToIdValue m = do
@@ -149,7 +208,7 @@ module Database where
 
     iterationToIdValueMany :: [MovementIteration] -> Action IO [Document]
     iterationToIdValueMany  = mapM iterationToIdValue
- 
+
     scalerToValue :: Scaler -> Value
     scalerToValue (ScaleDistance d) = val d
     scalerToValue (ScaleWeight w) = val w
@@ -203,7 +262,7 @@ module Database where
         return [
             "id" =: subblockId,
             "iteration" =: iterationDoc,
-            "measure" =: measureDoc, 
+            "measure" =: measureDoc,
             "notes" =: pack subblockNotes,
             "movements" =: movements
          ]
@@ -221,7 +280,7 @@ module Database where
 
     cycleToDoc :: Maybe TrainingCycle -> Document
     cycleToDoc Nothing = ["description" =: pack "none", "value" =: pack "none"]
-    cycleToDoc (Just (TrainingCycle start end length)) = 
+    cycleToDoc (Just (TrainingCycle start end length)) =
         ["start-date" =: dateToDoc start,
          "end-date" =: dateToDoc end,
          "length" =: length]
@@ -235,7 +294,7 @@ module Database where
                 "blocks" =: blocksDoc]
 
     trainingDayToId :: Value -> TrainingDay -> Action IO Value
-    trainingDayToId athleteId trainingDay = 
+    trainingDayToId athleteId trainingDay =
         trainingDayToDoc athleteId trainingDay >>= selectInsert "training-days" "athlete_id"
 
     trainingJournalToDoc :: Value -> TrainingJournal -> Action IO Document
@@ -251,7 +310,7 @@ module Database where
     insertAthlete (Athlete first last email journals) = do
         -- 1. Select on email to determine if the athlete is already in the DB.
         query <- findOne $ select ["email" =: email] "athletes"
-        case query of            
+        case query of
             -- 2. If they are, then update the journals using the existing athlete_id.
             Just d -> do
                 let athleteIdM = look (pack "_id") d
@@ -263,7 +322,7 @@ module Database where
                     Nothing -> error "insertAthlete: Failed to find athlete_id."
             -- 3. If they are not, then add them with an empty journals entry and return the id.
             Nothing -> do
-                athleteId <- insert "athletes" ["first-name" =: first, "last-name" =: last, "email" =: email]                
+                athleteId <- insert "athletes" ["first-name" =: first, "last-name" =: last, "email" =: email]
                 -- 4. Using the id, build the journal's doc and insert it using the id from 3.               
                 journalsDoc <- mapM (trainingJournalToDoc athleteId) journals
                 let athleteDoc = ["first-name" =: first, "last-name" =: last, "email" =: email, "journals" =: journalsDoc]

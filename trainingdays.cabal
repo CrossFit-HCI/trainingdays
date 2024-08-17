@@ -31,6 +31,8 @@ library
       Database
       DataModel
       Nutrition.MacroCalculator
+      ResultST
+      Utils
   other-modules:
       Paths_trainingdays
   autogen-modules:
@@ -43,6 +45,7 @@ library
     , array
     , base >=4.7 && <5
     , directory
+    , either
     , exceptions
     , haskeline
     , mongoDB
@@ -66,6 +69,7 @@ executable trainingdays-exe
     , array
     , base >=4.7 && <5
     , directory
+    , either
     , exceptions
     , haskeline
     , mongoDB
@@ -91,6 +95,7 @@ test-suite trainingdays-test
     , array
     , base >=4.7 && <5
     , directory
+    , either
     , exceptions
     , haskeline
     , mongoDB

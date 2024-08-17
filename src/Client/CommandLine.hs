@@ -1,260 +1,315 @@
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# HLINT ignore "Redundant bracket" #-}
 
 module Client.CommandLine where
-    import System.Console.Haskeline
-    import Control.Monad.IO.Class (liftIO)
-    import Data.Char (isSpace)
-    import Data.List (dropWhileEnd)
-    import Control.Exception (tryJust, Exception, SomeException)
-    import System.IO.Error (isDoesNotExistError)
-    import System.Directory (getHomeDirectory)
-    import Control.Monad.Trans (MonadIO)
-    import Data.Functor ((<&>))
-    import Control.Monad (guard, void)
-    import Data.Bifunctor (second)
-    import Database.MongoDB (Value (..))
-    import Control.Monad.State.Lazy (StateT, evalStateT, MonadState (get, put))
-    import Control.Monad.Trans.Class (lift)
-    import Control.Monad.Catch (MonadMask(..), MonadCatch, MonadThrow (..), ExitCase (..))
-    import GHC.Stack (HasCallStack)
-    import Control.Monad.Catch.Pure (MonadCatch(..))
+    import Utils
+        ( trimWhitespace, getHomeDir, maybeCase )
 
-    trimWhitespace :: String -> String
-    trimWhitespace = (dropWhileEnd isSpace) . (dropWhile isSpace)
+    import ResultST
+        ( returnError,
+          outputStrLn,
+          outputStr,
+          Error(ParseError), runResultST, liftResult, ResultST )
+
+    import System.Console.Haskeline
+        ( Settings(Settings, autoAddHistory, complete, historyFile),
+          InputT,
+          runInputT,
+          completeFilename,
+          getInputLine )
+
+    import Control.Monad
+        ( void )
+
+    import Data.Bifunctor
+        ( second )
+
+    import Database.MongoDB
+        ( Value (..) )
+
+    import Control.Monad.State
+        ( lift, get, put, liftIO )
+
+    import Database.MongoDB.Connection 
+        (Pipe)
+    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas)
+
+    import qualified Data.Text as T
+    
+    -- | The type of the command lines global state. It contains the
+    -- `FilePath` to the configuration file, the parsed contents of
+    -- the configuration file, and the id of the athlete being
+    -- inspected.
+    newtype Store = Store (FilePath, [Property], Value, Maybe Pipe)
+
+    -- | The type of our results; that is, the return type of all
+    -- computations requiring the global state and error tracking.
+    type Result a = ResultST Store a
+
+    -- | The initial store. All values are set to their types
+    -- respective "empty" value except for the file path which can be
+    -- passed in.
+    initStore :: FilePath -> Store
+    initStore fp = Store (fp,[],Null,Nothing)
+
+    -- | Returns the path to the configuration file from the global
+    -- store.
+    getConfigFilePath :: Result FilePath
+    getConfigFilePath = do Store (fp,_,_,_) <- get
+                           return fp
+
+    -- | Replaces the path to the configuration file in the global
+    -- store with the given file path.
+    putConfigFilePath :: FilePath -> Result ()
+    putConfigFilePath fp = do Store (_,c,v,p) <- get
+                              put $ Store (fp,c,v,p)
+
+    -- | Returns the parsed contents of the configuration file saved
+    -- in the global store.
+    getConfig :: Result Config
+    getConfig = do Store (_,conf,_,_) <- get
+                   return conf
+
+    -- | Replaces the parsed contents of the configuration file in the
+    -- global store with the given `Config`.
+    putConfig :: Config -> Result ()
+    putConfig conf = do Store (f,_,v,p) <- get
+                        put $ Store (f,conf,v,p)
+
+    -- | Returns the athlete id saved in the global store.
+    getValue :: Result Value
+    getValue = do Store (_,_,aid,_) <- get
+                  return aid
+
+    -- | Replaces the connection pipe in the global store with the
+    -- given `Pipe`.
+    putPipe :: Pipe -> Result ()
+    putPipe pipe = do Store (f,c,v,_) <- get
+                      put $ Store (f,c,v,Just pipe)
+
+    -- | Returns the athlete id saved in the global store.
+    getPipe :: Result (Maybe Pipe)
+    getPipe = do Store (_,_,_,pipe) <- get
+                 return pipe
 
     data Command =
-          Quit
-        | ShowConfig
-        | SetFirstName String
-        | SetLastName String
-        | SetEmail String
+          Quit                  -- ^ The quit command.
+        | ShowConfig            -- ^ The command for printing the 
+                                -- configuration file to the user.
+        | SetFirstName String   -- ^ The command for setting the first 
+                                -- name of the athlete being
+                                -- inspected.
+        | SetLastName String    -- ^ The command for setting the last
+                                -- name of the athlete being
+                                -- inspected.
+        | SetEmail String       -- ^ The command for setting the email 
+                                -- of the athlete being inspected.
+        | SetConnection String  -- ^ The command for setting the 
+                                -- connection string for MongoDB 
+                                -- Atlas.
         deriving (Show)
 
+    -- | Parses a `Command` from a `String`. 
+    -- A parse error is indicated by `Nothing`.
     parseCmd :: String -> Maybe Command
     parseCmd "quit" = Just Quit
-    parseCmd ('s':'e':'t':' ':rest) = mkSetCmd . (second trimWhitespace) $ break (== ' ') $ trimWhitespace rest
+    parseCmd ('s':'e':'t':' ':rest) =
+        mkSetCmd . (second trimWhitespace) $
+            break (== ' ') $ trimWhitespace rest
         where
-            mkSetCmd ("firstname", f) = Just $ SetFirstName f
-            mkSetCmd ("lastname", l)  = Just $ SetLastName l
-            mkSetCmd ("email", e)     = Just $ SetEmail e
-            mkSetCmd _                = Nothing
-    parseCmd ('s':'h':'o':'w':' ':rest) = mkShowCmd . trimWhitespace $ rest
+            mkSetCmd ("firstname", f)  = Just $ SetFirstName f
+            mkSetCmd ("lastname", l)   = Just $ SetLastName l
+            mkSetCmd ("email", e)      = Just $ SetEmail e
+            mkSetCmd ("connection", s) = Just $ SetConnection s
+            mkSetCmd _                 = Nothing
+    parseCmd ('s':'h':'o':'w':' ':rest) =
+        mkShowCmd . trimWhitespace $ rest
         where
             mkShowCmd "config" = Just ShowConfig
             mkShowCmd _        = Nothing
     parseCmd _ = Nothing
 
+    -- | Returns the parameter of a `Command` that has one.
     cmdValue :: Command -> String
-    cmdValue (SetFirstName f) = f
-    cmdValue (SetLastName l)  = l
-    cmdValue (SetEmail e)     = e
-    cmdValue _                = ""
+    cmdValue (SetFirstName f)  = f
+    cmdValue (SetLastName l)   = l
+    cmdValue (SetEmail e)      = e
+    cmdValue (SetConnection s) = s
+    cmdValue _                 = ""
 
     data Property =
-          FirstName String
-        | LastName String
-        | Email String
-        | AthleteID String
+          FirstName String         -- ^ The firstname property of the 
+                                   -- athlete being inspected stored in the
+                                   -- configuration file.
+        | LastName String          -- ^ The lastname property of the 
+                                   -- athlete being inspected stored in the
+                                   -- configuration file.
+        | Email String             -- ^ The email property of the 
+                                   -- athlete being inspected stored in the
+                                   -- configuration file.
+        | AthleteID String         -- ^ The athlete-id property of the 
+                                   -- athlete being inspected stored in the
+                                   -- configuration file.
+        | ConnectionString String  -- ^ The MongoDB Atlas connection string.        
         deriving (Show)
 
+    -- | The type of a configuration.
     type Config = [Property]
 
+    -- | Returns the property key of a `Property`.
     propKey :: Property -> String
     propKey (FirstName _) = "firstname"
     propKey (LastName _)  = "lastname"
     propKey (Email _)     = "email"
     propKey (AthleteID _) = "athleteid"
+    propKey (ConnectionString _) = "connection"
 
+    -- | Converts a key and a value into a `Property`.
     mkProp :: String -> String -> Maybe Property
-    mkProp "firstname" v = Just . FirstName $ v
-    mkProp "lastname"  l = Just . LastName $ l
-    mkProp "email"     e = Just . Email $ e
-    mkProp "athleteid" i = Just . AthleteID $ i
+    mkProp "firstname"  v = Just . FirstName $ v
+    mkProp "lastname"   l = Just . LastName $ l
+    mkProp "email"      e = Just . Email $ e
+    mkProp "athleteid"  i = Just . AthleteID $ i
+    mkProp "connection" s = Just . ConnectionString $ s
     mkProp _           _ = Nothing
 
-    lookupProp :: String -> [Property] -> Maybe String
+    -- | Looks up the value of a `Property` in a configuration using
+    -- the given key.
+    lookupProp :: String -> Config -> Maybe String
     lookupProp _ [] = Nothing
     lookupProp key (p:_) | key == propKey p = Just . propValue $ p
     lookupProp key (_:ps) = lookupProp key ps
 
+    -- | Returns the value of a property.
     propValue :: Property -> String
-    propValue (FirstName f)  = f
-    propValue (LastName l)   = l
-    propValue (Email e)      = e
-    propValue (AthleteID i)  = i
+    propValue (FirstName f)        = f
+    propValue (LastName l)         = l
+    propValue (Email e)            = e
+    propValue (AthleteID i)        = i
+    propValue (ConnectionString s) = s
 
+    -- | Replaces a property with the given ones value in a
+    -- configuration if it is already set, otherwise adds it to the
+    -- given configuration.
     setProp :: Property -> [Property] -> [Property]
-    setProp (FirstName new) ((FirstName _):ps) = (FirstName new):ps
-    setProp (LastName new) ((LastName _):ps)   = (LastName new):ps
-    setProp (Email new) ((Email _):ps)         = (Email new):ps
-    setProp (AthleteID new) ((AthleteID _):ps) = (AthleteID new):ps
-    setProp prop (p:ps) = p:setProp prop ps
-    setProp prop [] = [prop]
+    setProp (FirstName new) ((FirstName _):ps) 
+        = (FirstName new):ps
+    setProp (LastName new) ((LastName _):ps)   
+        = (LastName new):ps
+    setProp (Email new) ((Email _):ps)         
+        = (Email new):ps
+    setProp (AthleteID new) ((AthleteID _):ps) 
+        = (AthleteID new):ps
+    setProp (ConnectionString new) ((ConnectionString _):ps) 
+        = (ConnectionString new):ps
+    setProp prop (p:ps) 
+        = p:setProp prop ps
+    setProp prop [] 
+        = [prop]
 
-    propsToString :: [Property] -> String
-    propsToString = foldr (\p r -> propKey p++": " ++ propValue p ++ "\n" ++ r) ""
+    -- | Converts a configuration into a string. Each property is
+    -- converted into:
+    --
+    -- key: value
+    --
+    -- with each property of the configuration on its own line.
+    propsToString :: Config -> String
+    propsToString =
+        foldr (\p r -> propKey p++": " ++ propValue p ++ "\n" ++ r) ""
 
-    data Error = FileDoesNotExist | ParseError String | Exception SomeException | Aborted
-        deriving Show
-
-    type Store s = (FilePath, [Property], Value,s)
-
-    emptyStore :: FilePath -> Store ()
-    emptyStore fp = (fp, [], Null,())
-
-    getConfigFilePath :: ResultST s FilePath
-    getConfigFilePath = do (fp, _, _, _) <- get
-                           return fp
-
-    putConfigFilePath :: FilePath -> ResultST s ()
-    putConfigFilePath fp = do (_, c, v, a) <- get
-                              put (fp,c,v,a)
-
-    getConfig :: ResultST s Config
-    getConfig = do (_, conf, _, _) <- get
-                   return conf
-
-    putConfig :: Config -> ResultST s ()
-    putConfig conf = do (f, _, v, a) <- get
-                        put (f,conf,v,a)
-
-    getValue :: ResultST s Value
-    getValue = do (_, _, aid, _) <- get
-                  return aid
-
-    newtype ResultST s a = Result (StateT (Store s) IO (Either [Error] a))
-    type Result a = ResultST () a
-
-    runResult :: ResultST s a -> (Store s -> IO (Either [Error] a))
-    runResult (Result a) = evalStateT a
-
-    liftIOR :: IO a -> ResultST s a
-    liftIOR am = Result $ liftIO am <&> Right
-
-    result :: (a -> ResultST s b) -> ResultST s a -> ResultST s b
-    result comp (Result x) = Result $ do
-        r <- x
-        either (return . Left) (toState . comp) r
-
-    returnResult :: a -> ResultST s a
-    returnResult = Result . return . Right
-
-    returnError :: Error -> ResultST s a
-    returnError = Result . return . Left . (:[])
-
-    instance MonadIO (ResultST s) where
-      liftIO = liftIOR
-
-    instance Functor (ResultST s) where
-        fmap f (Result am)= Result $ am <&> fmap f
-
-    instance Applicative (ResultST s) where
-        pure = returnResult
-        (<*>) (Result fm) (Result am) = Result $ fm >>= (\fe -> am >>= (\ae -> return ((\f -> (Right . f) =<< ae) =<< fe)))
-
-    instance Monad (ResultST s) where
-        x >>= f = result f x
-
-    instance MonadState (FilePath, Config, Value, s) (ResultST s) where
-        get = Result $ do s <- get
-                          return . Right $ s
-        put s = Result $ do put s
-                            return . Right $ ()
-
-    instance MonadThrow (ResultST s) where
-      throwM :: (HasCallStack, Exception e) => e -> ResultST s a
-      throwM = Result . throwM
-
-    toState :: ResultST s a -> StateT (Store s) IO (Either [Error] a)
-    toState (Result r) = r
-
-    instance MonadCatch (ResultST s) where
-      catch :: (HasCallStack, Exception e) => ResultST s a -> (e -> ResultST s a) -> ResultST s a
-      catch (Result r) f = Result $ catch r $ toState . f
-
-    instance MonadMask (ResultST s) where
-        mask :: HasCallStack => ((forall a. ResultST s a -> ResultST s a) -> ResultST s b) -> ResultST s b
-        mask f = Result $ mask (\h -> toState $ f $ Result . h . toState)
-
-        uninterruptibleMask :: HasCallStack => ((forall a. ResultST s a -> ResultST s a) -> ResultST s b) -> ResultST s b
-        uninterruptibleMask f = Result $ uninterruptibleMask (\h -> toState $ f $ Result . h . toState)
-
-        generalBracket :: HasCallStack => ResultST s a -> (a -> ExitCase b -> ResultST s c) -> (a -> ResultST s b) -> ResultST s (b, c)
-        generalBracket r f g = Result $ do x <- generalBracket (toState r) f' g'
-                                           return $ case x of
-                                                        (Left e1, Left e2) -> Left $ e1 ++ e2
-                                                        (Left e, _) -> Left e
-                                                        (_, Left e) -> Left e
-                                                        (Right r1, Right r2) -> Right (r1,r2)
-
-            where
-                f' (Right r') (ExitCaseSuccess (Right b)) = toState $ f r' $ ExitCaseSuccess b
-                f' (Left e) _ = return . Left $ e
-                f' (Right _) (ExitCaseSuccess (Left e)) = return . Left $ e
-                f' (Right _) (ExitCaseException e) = return . Left $ [Exception e]
-                f' (Right _) ExitCaseAbort = return . Left $ [Aborted]
-
-                g' (Right r') = toState . g $ r'
-                g' (Left e)  = return . Left $ e
-
+    -- | The main entry point into the command line.
+    --
+    -- Initializes the main loop, but before it can be executed we
+    -- must setup Haskline and initialize the global store.
     cmdLine :: IO ()
     cmdLine = do filePathsM <- mkConfigFilePath
                  case filePathsM of
-                     Left _ -> putStrLn "CmdLine:Fatal: Failed to find the home directory."
-                     Right (homedir,configFilePath) ->
-                         void $ runResult (runInputT (settings homedir) mainLoop) (emptyStore configFilePath)
+                     Left _ ->
+                        putStrLn $ "CmdLine:Fatal: Failed to find" ++
+                                   " the home directory."
+                     Right (homedir,configFilePath) -> do
+                         let settings' = settings homedir
+                         let ml = runInputT settings' mainLoop
+                         let store = initStore configFilePath
+                         void $ runResultST ml store
         where
-            settings homedir = Settings {
-                complete       = completeFilename,
-                historyFile    = Just $ homedir ++ "/.tdr.trainingdays.history",
-                autoAddHistory = True
-            }
+            settings homedir =
+                let histFile = "/.tdr.trainingdays.history"
+                in Settings {
+                       complete       = completeFilename,
+                       historyFile    = Just $ homedir ++ histFile,
+                       autoAddHistory = True
+                    }
 
-    mainLoop :: InputT (ResultST ()) ()
-    mainLoop = (lift readConfFile) >> loop
-        where
-            loop :: InputT (ResultST ()) ()
-            loop = do
-                minput <- getInputLine "trd> "
-                case minput of
-                    Nothing -> loop
-                    Just input -> do let i = trimWhitespace input
-                                     if i == ""
-                                     then loop
-                                     else do let cmdM = parseCmd i
-                                             case cmdM of
-                                                 Just Quit -> return ()
-                                                 Just cmd -> do _ <- lift $ handleCommand cmd
-                                                                loop
-                                                 Nothing -> do liftIO . putStrLn $ "Unrecognized command: " ++ i
-                                                               loop
+    -- | The command lines main loop.
+    --
+    -- Before executing the main loop we parse in the configuration
+    -- file and save it in the global store.
+    mainLoop :: InputT (ResultST Store) ()
+    mainLoop = (lift readConfFile) >> do
+           conf <- lift getConfig
+           -- Authentication:
+           let mConStr = lookupProp "connection" conf
+           maybeCase mConStr
+            (lift . outputStrLn $ "No connection string set in the configuration file.")
+            (\conStr -> do creds <- lift . liftResult $ extractMongoAtlasCredentials (T.pack conStr)
+                           pipe <- lift. liftResult $ connectAtlas (atlas_host creds)
+                           lift . putPipe $ pipe
+                           logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
+                           if logged_in 
+                           then do -- We are authenticated, show prompt:
+                                  minput <- getInputLine "trd> "
+                                  maybeCase minput mainLoop $ \input ->
+                                      do let i = trimWhitespace input
+                                         if i == ""
+                                         then mainLoop
+                                         else do 
+                                             let cmdM = parseCmd i
+                                             let errorMsg = "Unrecognized command: "
+                                             maybeCase cmdM
+                                                 ((lift . outputStrLn $ errorMsg ++ i) >> mainLoop)
+                                                handleCommand                                   
+                                  else lift . outputStrLn $ "Failed to authenticate with the database.")           
+      where
+        handleCommand :: Command -> InputT (ResultST Store) ()
+        handleCommand Quit       = return ()
+        handleCommand ShowConfig = do
+            lift handleShowConfig
+            mainLoop
+        handleCommand (SetFirstName f) = do
+            lift $ writePropToConfFile (FirstName f)
+            mainLoop
+        handleCommand (SetLastName l) = do
+            lift $ writePropToConfFile (LastName l)
+            mainLoop
+        handleCommand (SetEmail e) = do
+            lift $ writePropToConfFile (Email e)
+            mainLoop
+        handleCommand (SetConnection s) = do
+            lift $ writePropToConfFile (ConnectionString s)
+            mainLoop
 
-    handleCommand :: Command -> Result ()
-    handleCommand Quit             = return ()
-    handleCommand ShowConfig       = do filePath <- getConfigFilePath
-                                        conf <- getConfig
-                                        liftIO . putStrLn $ "Configuration File: " ++ filePath
-                                        liftIO . putStr $ propsToString conf
-                                        return ()
-    handleCommand (SetFirstName f) = writePropToConfFile (FirstName f)
-    handleCommand (SetLastName l)  = writePropToConfFile (LastName l)
-    handleCommand (SetEmail e)     = writePropToConfFile (Email e)
+        handleShowConfig :: Result ()
+        handleShowConfig = 
+            do filePath <- getConfigFilePath
+               conf <- getConfig
+               outputStrLn $ "Configuration File: " ++ filePath
+               outputStr $ propsToString conf
 
-    getHomeDir :: IO (Either Error  String)
-    getHomeDir = do r <- liftIO $ tryJust (guard . isDoesNotExistError) getHomeDirectory
-                    return $ case r of
-                                Left _ -> Left FileDoesNotExist
-                                Right h -> Right h
-
+    -- | Returns the path to the users home directory and
+    -- configuration file.
     mkConfigFilePath :: IO (Either Error (FilePath,FilePath))
-    mkConfigFilePath = either Left (\hd -> Right (hd,hd ++ "/.trainingdays")) <$> getHomeDir
+    mkConfigFilePath = either Left paths <$> getHomeDir
+      where
+        configFileName = "/.trainingdays"
+        paths hd = Right (hd,hd ++ configFileName)
 
+    -- | Writes the given property to the configuration file. If it is
+    -- already set then the value is updated, otherwise the property
+    -- is added.
+    -- 
+    -- This does write the change to the configuration file on disk.
     writePropToConfFile :: Property -> Result ()
     writePropToConfFile prop = do conf <- getConfig
                                   let newConfig = setProp prop conf
@@ -262,6 +317,8 @@ module Client.CommandLine where
                                   writeConfFile
                                   return ()
 
+    -- | Writes the configuration stored in the global store to the
+    -- configuration file on disk.
     writeConfFile ::  Result ()
     writeConfFile = do confFilePath <- getConfigFilePath
                        config <- getConfig
@@ -269,20 +326,25 @@ module Client.CommandLine where
                        liftIO $ writeFile confFilePath contents
                        return ()
 
+    -- | Reads the configuration file on disk, parses its contents,
+    -- and stores the configuration in the global store.
     readConfFile :: Result ()
     readConfFile = do confFilePath <- getConfigFilePath
                       contents <- liftIO $ readFile confFilePath
                       let contentsLines = lines contents
                       props <- parseLines contentsLines
                       putConfig props
-                      return ()
         where
             parseLines :: [String] -> Result [Property]
             parseLines [] = return []
-            parseLines (l:ls) = do let (key, rest) = break (== ':') l
-                                   let value = drop 2 rest
-                                   conf <- parseLines ls
-                                   case mkProp key value of
-                                        Nothing -> returnError . ParseError $ "incorrect property key "++key++"of value "++value
-                                        Just prop -> return $ prop : conf
+            parseLines (l:ls) = 
+              do let (key, rest) = break (== ':') l
+                 let value = drop 2 rest
+                 conf <- parseLines ls
+                 let propM = mkProp key value
+                 maybeCase propM 
+                   (returnError . ParseError $ 
+                        "incorrect property key "++
+                        key++"of value "++value)
+                   (return . (:conf))
 
