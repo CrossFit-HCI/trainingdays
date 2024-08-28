@@ -10,7 +10,7 @@ module Client.CommandLine where
         ( returnError,
           outputStrLn,
           outputStr,
-          Error(ParseError), runResultST, liftResult, ResultST )
+          Error(ParseError), runResultST, liftResult, ResultST, runResultT, validate )
 
     import System.Console.Haskeline
         ( Settings(Settings, autoAddHistory, complete, historyFile),
@@ -31,12 +31,12 @@ module Client.CommandLine where
     import Control.Monad.State
         ( lift, get, put, liftIO )
 
-    import Database.MongoDB.Connection 
+    import Database.MongoDB.Connection
         (Pipe)
     import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas)
 
     import qualified Data.Text as T
-    
+
     -- | The type of the command lines global state. It contains the
     -- `FilePath` to the configuration file, the parsed contents of
     -- the configuration file, and the id of the athlete being
@@ -193,19 +193,19 @@ module Client.CommandLine where
     -- configuration if it is already set, otherwise adds it to the
     -- given configuration.
     setProp :: Property -> [Property] -> [Property]
-    setProp (FirstName new) ((FirstName _):ps) 
+    setProp (FirstName new) ((FirstName _):ps)
         = (FirstName new):ps
-    setProp (LastName new) ((LastName _):ps)   
+    setProp (LastName new) ((LastName _):ps)
         = (LastName new):ps
-    setProp (Email new) ((Email _):ps)         
+    setProp (Email new) ((Email _):ps)
         = (Email new):ps
-    setProp (AthleteID new) ((AthleteID _):ps) 
+    setProp (AthleteID new) ((AthleteID _):ps)
         = (AthleteID new):ps
-    setProp (ConnectionString new) ((ConnectionString _):ps) 
+    setProp (ConnectionString new) ((ConnectionString _):ps)
         = (ConnectionString new):ps
-    setProp prop (p:ps) 
+    setProp prop (p:ps)
         = p:setProp prop ps
-    setProp prop [] 
+    setProp prop []
         = [prop]
 
     -- | Converts a configuration into a string. Each property is
@@ -252,46 +252,52 @@ module Client.CommandLine where
            -- Authentication:
            let mConStr = lookupProp "connection" conf
            maybeCase mConStr
-            (lift . outputStrLn $ "No connection string set in the configuration file.")
-            (\conStr -> do creds <- lift . liftResult $ extractMongoAtlasCredentials (T.pack conStr)
-                           pipe <- lift. liftResult $ connectAtlas (atlas_host creds)
-                           lift . putPipe $ pipe
-                           logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
-                           if logged_in 
-                           then do -- We are authenticated, show prompt:
-                                  minput <- getInputLine "trd> "
-                                  maybeCase minput mainLoop $ \input ->
-                                      do let i = trimWhitespace input
-                                         if i == ""
-                                         then mainLoop
-                                         else do 
-                                             let cmdM = parseCmd i
-                                             let errorMsg = "Unrecognized command: "
-                                             maybeCase cmdM
-                                                 ((lift . outputStrLn $ errorMsg ++ i) >> mainLoop)
-                                                handleCommand                                   
-                                  else lift . outputStrLn $ "Failed to authenticate with the database.")           
+            innerLoop
+            (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)                           
+                           validate credsM
+                            (\errs -> do liftIO $ foldr (\x _ -> print x) (return ()) errs
+                                         innerLoop)
+                            (\creds -> do liftIO . print $ creds
+                                          pipe <- lift. liftResult $ connectAtlas (atlas_host creds)
+                                          lift . putPipe $ pipe
+                                          logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
+                                          if logged_in
+                                          then innerLoop
+                                          else do lift . outputStrLn $ "Failed to authenticate with the database."
+                                                  innerLoop))
       where
+        innerLoop = do -- Show prompt:
+                       minput <- getInputLine "trd> "
+                       maybeCase minput mainLoop $ \input ->
+                        do let i = trimWhitespace input
+                           if i == ""
+                           then mainLoop
+                           else do let cmdM = parseCmd i
+                                   let errorMsg = "Unrecognized command: "
+                                   maybeCase cmdM
+                                    ((lift . outputStrLn $ errorMsg ++ i) >> mainLoop)
+                                    handleCommand
+
         handleCommand :: Command -> InputT (ResultST Store) ()
         handleCommand Quit       = return ()
         handleCommand ShowConfig = do
             lift handleShowConfig
-            mainLoop
+            innerLoop
         handleCommand (SetFirstName f) = do
             lift $ writePropToConfFile (FirstName f)
-            mainLoop
+            innerLoop
         handleCommand (SetLastName l) = do
             lift $ writePropToConfFile (LastName l)
-            mainLoop
+            innerLoop
         handleCommand (SetEmail e) = do
             lift $ writePropToConfFile (Email e)
-            mainLoop
+            innerLoop
         handleCommand (SetConnection s) = do
             lift $ writePropToConfFile (ConnectionString s)
-            mainLoop
+            innerLoop
 
         handleShowConfig :: Result ()
-        handleShowConfig = 
+        handleShowConfig =
             do filePath <- getConfigFilePath
                conf <- getConfig
                outputStrLn $ "Configuration File: " ++ filePath
@@ -337,13 +343,13 @@ module Client.CommandLine where
         where
             parseLines :: [String] -> Result [Property]
             parseLines [] = return []
-            parseLines (l:ls) = 
+            parseLines (l:ls) =
               do let (key, rest) = break (== ':') l
                  let value = drop 2 rest
                  conf <- parseLines ls
                  let propM = mkProp key value
-                 maybeCase propM 
-                   (returnError . ParseError $ 
+                 maybeCase propM
+                   (returnError . ParseError $
                         "incorrect property key "++
                         key++"of value "++value)
                    (return . (:conf))

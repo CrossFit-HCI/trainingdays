@@ -54,13 +54,13 @@ module Database where
         atlas_host :: T.Text,
         atlas_user :: T.Text,
         atlas_password :: T.Text
-    }
+    } deriving Show
 
     extractMongoAtlasCredentials :: T.Text -> Result MongoAtlas
-    extractMongoAtlasCredentials cs =
+    extractMongoAtlasCredentials cs = do
         let s   = T.drop 14 cs
-            us' = T.splitOn ":" s
-        in case us' of
+        let us' = T.splitOn ":" s
+        case us' of
             [u,s'] -> case T.splitOn "@" s' of
                         [p,h] -> return $ MongoAtlas h u p
                         _ -> throwError . ParseError $ parseErrorMsg
