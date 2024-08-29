@@ -1,4 +1,4 @@
 .stack-work/
 *~
-TDMLParser.hs
 *.old
+.DS_Store
