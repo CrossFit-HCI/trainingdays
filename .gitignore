@@ -1,4 +1,5 @@
 .stack-work/
 *~
 *.old
+trainingdays.cabal
 .DS_Store
