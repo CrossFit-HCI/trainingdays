@@ -38,8 +38,6 @@ module Client.CommandLine where
 
     import System.Directory (doesFileExist)
     
-    import GHC.Base (when)
-    
     -- | The type of the command lines global state. It contains the
     -- `FilePath` to the configuration file, the parsed contents of
     -- the configuration file, and the id of the athlete being
@@ -250,35 +248,41 @@ module Client.CommandLine where
     -- Before executing the main loop we parse in the configuration
     -- file and save it in the global store.
     mainLoop :: InputT (ResultST Store) ()
-    mainLoop = (lift readConfFile) >> do
-           conf <- lift getConfig
-           -- Authentication:
-           let mConStr = lookupProp "connection" conf
-           maybeCase mConStr
-            innerLoop
-            (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)
-                           validate credsM
-                            (\errs -> do liftIO $ foldr (\x _ -> print x) (return ()) errs
-                                         innerLoop)
-                            (\creds -> do liftIO . print $ creds
-                                          pipe <- lift. liftResult $ connectAtlas (atlas_host creds)
-                                          lift . putPipe $ pipe
-                                          logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
-                                          if logged_in
-                                          then innerLoop
-                                          else do lift . outputStrLn $ "Failed to authenticate with the database."
-                                                  innerLoop))
+    mainLoop = do
+        lift $ outputStrLn header
+        -- Configuration file:
+        confFilePath <- lift getConfigFilePath
+        confFileExists <- liftIO $ doesFileExist confFilePath
+        if confFileExists  
+        then lift readConfFile
+        else liftIO noConfFile        
+        conf <- lift getConfig
+        -- Authentication:
+        let mConStr = lookupProp "connection" conf
+        maybeCase mConStr
+         innerLoop
+         (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)
+                        validate credsM
+                         (\errs -> do liftIO $ foldr (\x _ -> print x) (return ()) errs
+                                      innerLoop)
+                         (\creds -> do pipe <- lift . liftResult $ connectAtlas (atlas_host creds)
+                                       lift . putPipe $ pipe
+                                       logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
+                                       if logged_in
+                                       then innerLoop
+                                       else do lift . outputStrLn $ "Failed to authenticate with the database."
+                                               innerLoop))
       where
         innerLoop = do -- Show prompt:
                        minput <- getInputLine "trd> "
-                       maybeCase minput mainLoop $ \input ->
+                       maybeCase minput innerLoop $ \input ->
                         do let i = trimWhitespace input
                            if i == ""
-                           then mainLoop
+                           then innerLoop
                            else do let cmdM = parseCmd i
                                    let errorMsg = "Unrecognized command: "
                                    maybeCase cmdM
-                                    ((lift . outputStrLn $ errorMsg ++ i) >> mainLoop)
+                                    ((lift . outputStrLn $ errorMsg ++ i) >> innerLoop)
                                     handleCommand
 
         handleCommand :: Command -> InputT (ResultST Store) ()
@@ -305,6 +309,20 @@ module Client.CommandLine where
                conf <- getConfig
                outputStrLn $ "Configuration File: " ++ filePath
                outputStr $ propsToString conf
+
+        noConfFile :: IO ()
+        noConfFile = do 
+            putStrLn "No configuration was found."
+            putStrLn $ "Please issue the following commands " ++
+                       "to setup your database:\n"++
+                       "set firstname Jane\n"++
+                       "set lastname Doe\n"++
+                       "set email jane@example.com\n"++
+                       "set connection mongodb-atlas-"++
+                       "connection-string"
+
+        header :: String
+        header = "Welcome to the Training Days database.\n"
 
     -- | Returns the path to the users home directory and
     -- configuration file.
@@ -339,13 +357,11 @@ module Client.CommandLine where
     -- and stores the configuration in the global store.
     readConfFile :: Result ()
     readConfFile = do confFilePath <- getConfigFilePath
-                      confFileExists <- liftIO $ doesFileExist confFilePath
-                      when confFileExists $ 
-                        do contents <- liftIO $ readFile confFilePath
-                           let contentsLines = lines contents
-                           props <- parseLines contentsLines
-                           putConfig props
-        where
+                      contents <- liftIO $ readFile confFilePath
+                      let contentsLines = lines contents
+                      props <- parseLines contentsLines
+                      putConfig props
+        where                        
             parseLines :: [String] -> Result [Property]
             parseLines [] = return []
             parseLines (l:ls) =
