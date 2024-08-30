@@ -24,7 +24,6 @@ module Client.CommandLine where
 
     import Data.Bifunctor
         ( second )
-
     import Database.MongoDB
         ( Value (..) )
 
@@ -37,6 +36,10 @@ module Client.CommandLine where
 
     import qualified Data.Text as T
 
+    import System.Directory (doesFileExist)
+    
+    import GHC.Base (when)
+    
     -- | The type of the command lines global state. It contains the
     -- `FilePath` to the configuration file, the parsed contents of
     -- the configuration file, and the id of the athlete being
@@ -253,7 +256,7 @@ module Client.CommandLine where
            let mConStr = lookupProp "connection" conf
            maybeCase mConStr
             innerLoop
-            (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)                           
+            (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)
                            validate credsM
                             (\errs -> do liftIO $ foldr (\x _ -> print x) (return ()) errs
                                          innerLoop)
@@ -336,10 +339,12 @@ module Client.CommandLine where
     -- and stores the configuration in the global store.
     readConfFile :: Result ()
     readConfFile = do confFilePath <- getConfigFilePath
-                      contents <- liftIO $ readFile confFilePath
-                      let contentsLines = lines contents
-                      props <- parseLines contentsLines
-                      putConfig props
+                      confFileExists <- liftIO $ doesFileExist confFilePath
+                      when confFileExists $ 
+                        do contents <- liftIO $ readFile confFilePath
+                           let contentsLines = lines contents
+                           props <- parseLines contentsLines
+                           putConfig props
         where
             parseLines :: [String] -> Result [Property]
             parseLines [] = return []
