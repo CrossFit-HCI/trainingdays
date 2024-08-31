@@ -36,3 +36,7 @@ module Utils where
     -- | A recursor for maybe.
     maybeCase :: Maybe a -> b -> (a -> b) -> b
     maybeCase = flip $ \n -> flip (maybe n)
+
+    just :: Monad m => Maybe a -> (a -> m ()) -> m ()
+    just Nothing _ = return ()
+    just (Just x) f = f x

@@ -36,12 +36,9 @@ module Database where
     import qualified Data.Text as T
     import Database.MongoDB.Connection (openReplicaSetSRV')
     import Control.Exception.Base (try)
-    import ResultST (ResultST, Error (ParseError, DBError), throwError, Result)
+    import ResultST (Error (ParseError, DBError), throwError, Result)
     import Utils (maybeCase)
     import Database.MongoDB.Query (auth)
-    
-    type StoreDB = Pipe
-    type ResultDB a = ResultST StoreDB a
 
     databaseName :: Database
     databaseName = pack "training_days_dev"

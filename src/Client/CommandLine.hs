@@ -4,13 +4,13 @@
 
 module Client.CommandLine where
     import Utils
-        ( trimWhitespace, getHomeDir, maybeCase )
+        ( trimWhitespace, getHomeDir, maybeCase, just )
 
     import ResultST
         ( returnError,
           outputStrLn,
           outputStr,
-          Error(ParseError), runResultST, liftResult, ResultST, runResultT, validate )
+          Error(ParseError), runResultST, liftResult, ResultST )
 
     import System.Console.Haskeline
         ( Settings(Settings, autoAddHistory, complete, historyFile),
@@ -20,7 +20,7 @@ module Client.CommandLine where
           getInputLine )
 
     import Control.Monad
-        ( void )
+        ( void, unless )
 
     import Data.Bifunctor
         ( second )
@@ -37,7 +37,7 @@ module Client.CommandLine where
     import qualified Data.Text as T
 
     import System.Directory (doesFileExist)
-    
+
     -- | The type of the command lines global state. It contains the
     -- `FilePath` to the configuration file, the parsed contents of
     -- the configuration file, and the id of the athlete being
@@ -46,7 +46,7 @@ module Client.CommandLine where
 
     -- | The type of our results; that is, the return type of all
     -- computations requiring the global state and error tracking.
-    type Result a = ResultST Store a
+    type CmdLineResultST a = ResultST Store a
 
     -- | The initial store. All values are set to their types
     -- respective "empty" value except for the file path which can be
@@ -56,41 +56,41 @@ module Client.CommandLine where
 
     -- | Returns the path to the configuration file from the global
     -- store.
-    getConfigFilePath :: Result FilePath
+    getConfigFilePath :: CmdLineResultST FilePath
     getConfigFilePath = do Store (fp,_,_,_) <- get
                            return fp
 
     -- | Replaces the path to the configuration file in the global
     -- store with the given file path.
-    putConfigFilePath :: FilePath -> Result ()
+    putConfigFilePath :: FilePath -> CmdLineResultST ()
     putConfigFilePath fp = do Store (_,c,v,p) <- get
                               put $ Store (fp,c,v,p)
 
     -- | Returns the parsed contents of the configuration file saved
     -- in the global store.
-    getConfig :: Result Config
+    getConfig :: CmdLineResultST Config
     getConfig = do Store (_,conf,_,_) <- get
                    return conf
 
     -- | Replaces the parsed contents of the configuration file in the
     -- global store with the given `Config`.
-    putConfig :: Config -> Result ()
+    putConfig :: Config -> CmdLineResultST ()
     putConfig conf = do Store (f,_,v,p) <- get
                         put $ Store (f,conf,v,p)
 
     -- | Returns the athlete id saved in the global store.
-    getValue :: Result Value
+    getValue :: CmdLineResultST Value
     getValue = do Store (_,_,aid,_) <- get
                   return aid
 
     -- | Replaces the connection pipe in the global store with the
     -- given `Pipe`.
-    putPipe :: Pipe -> Result ()
+    putPipe :: Pipe -> CmdLineResultST ()
     putPipe pipe = do Store (f,c,v,_) <- get
                       put $ Store (f,c,v,Just pipe)
 
     -- | Returns the athlete id saved in the global store.
-    getPipe :: Result (Maybe Pipe)
+    getPipe :: CmdLineResultST (Maybe Pipe)
     getPipe = do Store (_,_,_,pipe) <- get
                  return pipe
 
@@ -177,10 +177,12 @@ module Client.CommandLine where
 
     -- | Looks up the value of a `Property` in a configuration using
     -- the given key.
-    lookupProp :: String -> Config -> Maybe String
-    lookupProp _ [] = Nothing
-    lookupProp key (p:_) | key == propKey p = Just . propValue $ p
-    lookupProp key (_:ps) = lookupProp key ps
+    lookupProp :: String -> CmdLineResultST (Maybe String)
+    lookupProp prop = lookupProp' prop <$> getConfig
+        where
+            lookupProp' _ [] = Nothing
+            lookupProp' key (p:_) | key == propKey p = Just . propValue $ p
+            lookupProp' key (_:ps) = lookupProp' key ps
 
     -- | Returns the value of a property.
     propValue :: Property -> String
@@ -250,29 +252,33 @@ module Client.CommandLine where
     mainLoop :: InputT (ResultST Store) ()
     mainLoop = do
         lift $ outputStrLn header
-        -- Configuration file:
-        confFilePath <- lift getConfigFilePath
-        confFileExists <- liftIO $ doesFileExist confFilePath
-        if confFileExists  
-        then lift readConfFile
-        else liftIO noConfFile        
-        conf <- lift getConfig
-        -- Authentication:
-        let mConStr = lookupProp "connection" conf
-        maybeCase mConStr
-         innerLoop
-         (\conStr -> do credsM <- liftIO $ runResultT $ extractMongoAtlasCredentials (T.pack conStr)
-                        validate credsM
-                         (\errs -> do liftIO $ foldr (\x _ -> print x) (return ()) errs
-                                      innerLoop)
-                         (\creds -> do pipe <- lift . liftResult $ connectAtlas (atlas_host creds)
-                                       lift . putPipe $ pipe
-                                       logged_in <- liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
-                                       if logged_in
-                                       then innerLoop
-                                       else do lift . outputStrLn $ "Failed to authenticate with the database."
-                                               innerLoop))
+        lift preprocess
+        innerLoop
       where
+        preprocess :: ResultST Store ()
+        preprocess = do
+            setupConf
+            mConStr <- lookupProp "connection"
+            just mConStr
+              (\conStr -> do loggedIn <- authWithAtlas conStr
+                             unless loggedIn $
+                                 outputStrLn "Failed to authenticate with Atlas.")
+
+        authWithAtlas :: String -> CmdLineResultST Bool
+        authWithAtlas conStr = do
+            creds <- liftResult $ extractMongoAtlasCredentials (T.pack conStr)
+            pipe <- liftResult $ connectAtlas (atlas_host creds)
+            putPipe pipe
+            liftIO $ authAtlas (atlas_user creds) (atlas_password creds) pipe
+
+        setupConf :: CmdLineResultST ()
+        setupConf = do
+            confFilePath <- getConfigFilePath
+            confFileExists <- liftIO $ doesFileExist confFilePath
+            if confFileExists
+            then readConfFile
+            else liftIO noConfFile
+
         innerLoop = do -- Show prompt:
                        minput <- getInputLine "trd> "
                        maybeCase minput innerLoop $ \input ->
@@ -303,7 +309,7 @@ module Client.CommandLine where
             lift $ writePropToConfFile (ConnectionString s)
             innerLoop
 
-        handleShowConfig :: Result ()
+        handleShowConfig :: CmdLineResultST ()
         handleShowConfig =
             do filePath <- getConfigFilePath
                conf <- getConfig
@@ -311,7 +317,7 @@ module Client.CommandLine where
                outputStr $ propsToString conf
 
         noConfFile :: IO ()
-        noConfFile = do 
+        noConfFile = do
             putStrLn "No configuration was found."
             putStrLn $ "Please issue the following commands " ++
                        "to setup your database:\n"++
@@ -337,7 +343,7 @@ module Client.CommandLine where
     -- is added.
     -- 
     -- This does write the change to the configuration file on disk.
-    writePropToConfFile :: Property -> Result ()
+    writePropToConfFile :: Property -> CmdLineResultST ()
     writePropToConfFile prop = do conf <- getConfig
                                   let newConfig = setProp prop conf
                                   putConfig newConfig
@@ -346,7 +352,7 @@ module Client.CommandLine where
 
     -- | Writes the configuration stored in the global store to the
     -- configuration file on disk.
-    writeConfFile ::  Result ()
+    writeConfFile ::  CmdLineResultST ()
     writeConfFile = do confFilePath <- getConfigFilePath
                        config <- getConfig
                        let contents = propsToString config
@@ -355,14 +361,14 @@ module Client.CommandLine where
 
     -- | Reads the configuration file on disk, parses its contents,
     -- and stores the configuration in the global store.
-    readConfFile :: Result ()
+    readConfFile :: CmdLineResultST ()
     readConfFile = do confFilePath <- getConfigFilePath
                       contents <- liftIO $ readFile confFilePath
                       let contentsLines = lines contents
                       props <- parseLines contentsLines
                       putConfig props
-        where                        
-            parseLines :: [String] -> Result [Property]
+        where
+            parseLines :: [String] -> CmdLineResultST [Property]
             parseLines [] = return []
             parseLines (l:ls) =
               do let (key, rest) = break (== ':') l
