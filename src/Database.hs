@@ -36,7 +36,7 @@ module Database where
     import qualified Data.Text as T
     import Database.MongoDB.Connection (openReplicaSetSRV')
     import Control.Exception.Base (try)
-    import ResultST (Error (ParseError, DBError), throwError, Result)
+    import ResultST (Error (ParseError, DBError), throwError, Result, liftResult)
     import Utils (maybeCase)
     import Database.MongoDB.Query (auth)
 
@@ -87,9 +87,40 @@ module Database where
         access pipe master "admin" $
             auth username password
 
+    -----------------------------------
+    -- Executing Database Queries    --
+    -----------------------------------
+
+    runAction :: Pipe -> Action IO a -> IO a
+    runAction pipe = access pipe master databaseName
+
+    -------------------------
+    -- Values              --
+    -------------------------
+
+    maybeValue :: Value -> Maybe Value
+    maybeValue Null = Nothing
+    maybeValue v = Just v
+
     -------------------------
     -- Database Queries    --
     -------------------------
+
+    selectAthleteID :: String -> String -> String -> Action IO Value
+    selectAthleteID firstname lastname email = do
+        query <- findOne $ select athleteDoc "athlete"
+        maybeCase query createNewId returnId
+        where
+            athleteDoc :: Document
+            athleteDoc = ["firstname" =: pack firstname, 
+                          "lastname" =: pack lastname, 
+                          "email" =: pack email]
+
+            returnId :: Document -> Action IO Value
+            returnId = look (pack "_id")
+
+            createNewId :: Action IO Value
+            createNewId = insert "athlete" athleteDoc
 
     selectInsert :: (MonadIO m, MonadFail m) => Collection -> String -> Document -> Action m Value
     -- ^ Determines if `doc` is already in the database by selecting on `key`,

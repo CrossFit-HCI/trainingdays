@@ -20,19 +20,18 @@ module Client.CommandLine where
           getInputLine )
 
     import Control.Monad
-        ( void, unless )
+        ( void )
 
     import Data.Bifunctor
         ( second )
-    import Database.MongoDB
-        ( Value (..) )
+    import Database.MongoDB ( Value(..), close )
 
     import Control.Monad.State
         ( lift, get, put, liftIO )
 
     import Database.MongoDB.Connection
         (Pipe)
-    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas)
+    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selectAthleteID, runAction, maybeValue)
 
     import qualified Data.Text as T
 
@@ -76,12 +75,7 @@ module Client.CommandLine where
     -- global store with the given `Config`.
     putConfig :: Config -> CmdLineResultST ()
     putConfig conf = do Store (f,_,v,p) <- get
-                        put $ Store (f,conf,v,p)
-
-    -- | Returns the athlete id saved in the global store.
-    getValue :: CmdLineResultST Value
-    getValue = do Store (_,_,aid,_) <- get
-                  return aid
+                        put $ Store (f,conf,v,p)   
 
     -- | Replaces the connection pipe in the global store with the
     -- given `Pipe`.
@@ -89,10 +83,21 @@ module Client.CommandLine where
     putPipe pipe = do Store (f,c,v,_) <- get
                       put $ Store (f,c,v,Just pipe)
 
-    -- | Returns the athlete id saved in the global store.
+    -- | Returns the pipe saved in the global store.
     getPipe :: CmdLineResultST (Maybe Pipe)
     getPipe = do Store (_,_,_,pipe) <- get
                  return pipe
+
+    -- | Replaces the athlete id in the global store with the
+    -- given `Value`.
+    putAthleteId :: Value -> CmdLineResultST ()
+    putAthleteId aid = do Store (f,c,_,pipe) <- get
+                          put $ Store (f,c,aid,pipe)
+
+    -- | Returns the athlete id saved in the global store.
+    getAthleteId :: CmdLineResultST (Maybe Value)
+    getAthleteId = do Store (_,_,v,_) <- get
+                      return $ maybeValue v
 
     data Command =
           Quit                  -- ^ The quit command.
@@ -261,8 +266,18 @@ module Client.CommandLine where
             mConStr <- lookupProp "connection"
             just mConStr
               (\conStr -> do loggedIn <- authWithAtlas conStr
-                             unless loggedIn $
-                                 outputStrLn "Failed to authenticate with Atlas.")
+                             if loggedIn 
+                             then do 
+                                -- Get the athlete ID from the DB. 
+                                -- All queries will be related to the configured athlete.
+                                pipeM <- getPipe
+                                maybeCase pipeM
+                                    (outputStrLn "preprocess: hit an unreachable point where the pipe is not set in the state after authentication.")
+                                    -- TODO: Get the firstname, lastname, and email from the stored config.                             
+                                    (\pipe -> do aid <- liftIO . runAction pipe $ selectAthleteID "" "" ""
+                                                 putAthleteId aid)
+                             else  outputStrLn "Failed to authenticate with Atlas."                                                              
+              )
 
         authWithAtlas :: String -> CmdLineResultST Bool
         authWithAtlas conStr = do
@@ -292,7 +307,11 @@ module Client.CommandLine where
                                     handleCommand
 
         handleCommand :: Command -> InputT (ResultST Store) ()
-        handleCommand Quit       = return ()
+        handleCommand Quit       = do
+            pipeM <- lift getPipe
+            maybeCase pipeM
+                (return ())
+                (\pipe -> void (liftIO . close $ pipe))
         handleCommand ShowConfig = do
             lift handleShowConfig
             innerLoop
