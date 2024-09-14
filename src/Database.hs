@@ -36,7 +36,7 @@ module Database where
     import qualified Data.Text as T
     import Database.MongoDB.Connection (openReplicaSetSRV')
     import Control.Exception.Base (try)
-    import ResultST (Error (ParseError, DBError), throwError, Result, liftResult)
+    import ResultST (Error (ParseError, DBError), throwError, Result)
     import Utils (maybeCase)
     import Database.MongoDB.Query (auth)
 
@@ -106,8 +106,8 @@ module Database where
     -- Database Queries    --
     -------------------------
 
-    selectAthleteID :: String -> String -> String -> Action IO Value
-    selectAthleteID firstname lastname email = do
+    selectAthleteId :: String -> String -> String -> Action IO Value
+    selectAthleteId firstname lastname email = do
         query <- findOne $ select athleteDoc "athlete"
         maybeCase query createNewId returnId
         where

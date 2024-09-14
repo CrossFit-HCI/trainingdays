@@ -31,7 +31,7 @@ module Client.CommandLine where
 
     import Database.MongoDB.Connection
         (Pipe)
-    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selectAthleteID, runAction, maybeValue)
+    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selectAthleteId, runAction, maybeValue)
 
     import qualified Data.Text as T
 
@@ -274,9 +274,16 @@ module Client.CommandLine where
                                 maybeCase pipeM
                                     (outputStrLn "preprocess: hit an unreachable point where the pipe is not set in the state after authentication.")
                                     -- TODO: Get the firstname, lastname, and email from the stored config.                             
-                                    (\pipe -> do aid <- liftIO . runAction pipe $ selectAthleteID "" "" ""
-                                                 putAthleteId aid)
-                             else  outputStrLn "Failed to authenticate with Atlas."                                                              
+                                    (\pipe -> do firstnameM <- lookupProp "firstname"
+                                                 lastnameM <- lookupProp "lastname"
+                                                 emailM <- lookupProp "email"
+                                                 case (firstnameM, lastnameM, emailM) of
+                                                    (Just firstname, Just lastname, Just email) -> 
+                                                        do aid <- liftIO . runAction pipe $ selectAthleteId firstname lastname email
+                                                           putAthleteId aid
+                                                           outputStrLn . show $ aid
+                                                    _ -> liftIO noConfFile)
+                             else outputStrLn "Failed to authenticate with Atlas."                                                         
               )
 
         authWithAtlas :: String -> CmdLineResultST Bool
