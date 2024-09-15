@@ -28,7 +28,7 @@ module Database where
         primary,
         secondaryOk )
     import Data.Text (pack, unpack)
-    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..), Athlete (..))
+    import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..))
     import Control.Monad.IO.Class (MonadIO (liftIO))
     import Control.Monad ((>=>))
     import Prelude hiding (lookup)
@@ -106,9 +106,9 @@ module Database where
     -- Database Queries    --
     -------------------------
 
-    selectAthleteId :: String -> String -> String -> Action IO Value
-    selectAthleteId firstname lastname email = do
-        query <- findOne $ select athleteDoc "athlete"
+    selsertAthleteId :: String -> String -> String -> Action IO Value
+    selsertAthleteId firstname lastname email = do
+        query <- findOne $ select athleteDoc "athletes"
         maybeCase query createNewId returnId
         where
             athleteDoc :: Document
@@ -120,7 +120,7 @@ module Database where
             returnId = look (pack "_id")
 
             createNewId :: Action IO Value
-            createNewId = insert "athlete" athleteDoc
+            createNewId = insert "athletes" athleteDoc
 
     selectInsert :: (MonadIO m, MonadFail m) => Collection -> String -> Document -> Action m Value
     -- ^ Determines if `doc` is already in the database by selecting on `key`,
@@ -333,25 +333,3 @@ module Database where
                  "description" =: pack description,
                  "training" =: trainingIds
                ]
-
-    insertAthlete :: Athlete -> Action IO ()
-    insertAthlete (Athlete first last email journals) = do
-        -- 1. Select on email to determine if the athlete is already in the DB.
-        query <- findOne $ select ["email" =: email] "athletes"
-        case query of
-            -- 2. If they are, then update the journals using the existing athlete_id.
-            Just d -> do
-                let athleteIdM = look (pack "_id") d
-                case athleteIdM of
-                    Just athleteId -> do
-                        journalsDoc <- mapM (trainingJournalToDoc athleteId) journals
-                        let athleteDoc = ["first-name" =: first, "last-name" =: last, "email" =: email, "journals" =: journalsDoc]
-                        upsert (select ["_id" =: athleteId] "athletes") athleteDoc
-                    Nothing -> error "insertAthlete: Failed to find athlete_id."
-            -- 3. If they are not, then add them with an empty journals entry and return the id.
-            Nothing -> do
-                athleteId <- insert "athletes" ["first-name" =: first, "last-name" =: last, "email" =: email]
-                -- 4. Using the id, build the journal's doc and insert it using the id from 3.               
-                journalsDoc <- mapM (trainingJournalToDoc athleteId) journals
-                let athleteDoc = ["first-name" =: first, "last-name" =: last, "email" =: email, "journals" =: journalsDoc]
-                upsert (select ["_id" =: athleteId] "athletes") athleteDoc

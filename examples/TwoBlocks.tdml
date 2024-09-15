@@ -1,4 +1,5 @@
 TrainingDay: 02/23/2024
+- journal: "blah"
 - cycle:
   start: 02/23/2024
   end: 02/23/2024
@@ -36,12 +37,12 @@ TrainingDay: 02/23/2024
           I used the open standard on the shuttle runs. That 
           last set of shuttle runs were hard af, because my 
           back was literally cramped up lol. I was like duck 
-          walking as fast as I could lol.",
+          walking as fast as I could lol."
   movements:
   - movement: "chest-to-bar pull-up"
     notes: ""
     labels:
-    - gymnastics
+    - "gymnastics"
     targets: none
     iteration:
     - reps: 5
@@ -51,7 +52,7 @@ TrainingDay: 02/23/2024
   - movement: "shuttle run"
     notes: ""
     labels:
-    - monostructural
+    - "monostructural"
     targets: none
     iteration:
     - reps: 10
@@ -62,13 +63,13 @@ TrainingDay: 02/23/2024
   - movement: "overhead squat"
     notes: ""
     labels:
-    - weightlifting
+    - "weightlifting"
     targets: none
     iteration:
     - reps: 10
     scalers: 
     - weight: 95
-    - increaseReps: 5
+    - increase-rounds-by-reps: 5
     measures: none
     submovements: none
   

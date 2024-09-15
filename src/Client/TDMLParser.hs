@@ -71,7 +71,7 @@ fromMovementParams ps = do
           findSubmovementsParam (SubmovementsParam m:_) = Just m
           findSubmovementsParam (_:ps) = findSubmovementsParam ps
 
-parser :: [Token] -> IO DM.TrainingDay
+parser :: [Token] -> IO DM.TrainingJournal
 parser = evalStateT trainingDayEntry
 
 testParser :: TokenParser a -> String -> IO (a,[Token])
@@ -84,7 +84,7 @@ testParserFile s = do
      let t = parser cs
      t >>= print
 
-parse :: FilePath -> IO DM.TrainingDay
+parse :: FilePath -> IO DM.TrainingJournal
 parse s = do
      f <- (readFile s)
      let cs = lexer f
@@ -211,14 +211,16 @@ colonEntryParser entryParser valueParser = do
      spaces
      valueParser
 
-trainingDayEntry :: TokenParser DM.TrainingDay
+trainingDayEntry :: TokenParser DM.TrainingJournal
 trainingDayEntry = colonEntryParser trainingDay $ do
      d <- date
+     newline
+     j <- journalEntry
      newline
      c <- cycleEntry
      newline
      bs <- blockList
-     return $ DM.TrainingDay d c bs
+     return $ DM.TrainingJournal j "" [DM.TrainingDay d c bs]
 
 cycleEntry :: TokenParser (Maybe DM.TrainingCycle)
 cycleEntry = do
@@ -486,6 +488,11 @@ notesEntry = colonEntryParser notes $ do
      newline
      return s
 
+journalEntry :: TokenParser String
+journalEntry = do
+     dashOption
+     colonEntryParser journal string
+
 spaces :: TokenParser ()
 spaces = do
      cs <- get
@@ -618,6 +625,9 @@ measure = tokenUnitParser TokenMeasure "measure expected."
 
 notes :: TokenParser ()
 notes = tokenUnitParser TokenNotes "notes expected."
+
+journal :: TokenParser ()
+journal = tokenUnitParser TokenJournal "journal expected."
 
 string :: TokenParser String
 string = tokenStringParser TokenString "string expected."

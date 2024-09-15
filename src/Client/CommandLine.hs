@@ -31,7 +31,7 @@ module Client.CommandLine where
 
     import Database.MongoDB.Connection
         (Pipe)
-    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selectAthleteId, runAction, maybeValue)
+    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selsertAthleteId, runAction, maybeValue)
 
     import qualified Data.Text as T
 
@@ -267,23 +267,8 @@ module Client.CommandLine where
             just mConStr
               (\conStr -> do loggedIn <- authWithAtlas conStr
                              if loggedIn 
-                             then do 
-                                -- Get the athlete ID from the DB. 
-                                -- All queries will be related to the configured athlete.
-                                pipeM <- getPipe
-                                maybeCase pipeM
-                                    (outputStrLn "preprocess: hit an unreachable point where the pipe is not set in the state after authentication.")
-                                    -- TODO: Get the firstname, lastname, and email from the stored config.                             
-                                    (\pipe -> do firstnameM <- lookupProp "firstname"
-                                                 lastnameM <- lookupProp "lastname"
-                                                 emailM <- lookupProp "email"
-                                                 case (firstnameM, lastnameM, emailM) of
-                                                    (Just firstname, Just lastname, Just email) -> 
-                                                        do aid <- liftIO . runAction pipe $ selectAthleteId firstname lastname email
-                                                           putAthleteId aid
-                                                           outputStrLn . show $ aid
-                                                    _ -> liftIO noConfFile)
-                             else outputStrLn "Failed to authenticate with Atlas."                                                         
+                             then initAthleteId
+                             else outputStrLn "preprocess: Failed to authenticate with Atlas."                                                         
               )
 
         authWithAtlas :: String -> CmdLineResultST Bool
@@ -300,6 +285,20 @@ module Client.CommandLine where
             if confFileExists
             then readConfFile
             else liftIO noConfFile
+
+        initAthleteId :: ResultST Store ()
+        initAthleteId = do 
+            pipeM <- getPipe
+            maybeCase pipeM
+                (outputStrLn "initAthleteId: hit an unreachable point where the pipe is not set in the state after authentication.")
+                (\pipe -> do firstnameM <- lookupProp "firstname"
+                             lastnameM <- lookupProp "lastname"
+                             emailM <- lookupProp "email"
+                             case (firstnameM, lastnameM, emailM) of
+                                (Just firstname, Just lastname, Just email) -> 
+                                    do aid <- liftIO . runAction pipe $ selsertAthleteId firstname lastname email
+                                       putAthleteId aid
+                                _ -> liftIO noConfFile)
 
         innerLoop = do -- Show prompt:
                        minput <- getInputLine "trd> "

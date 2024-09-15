@@ -31,6 +31,7 @@ data Token = TokenDash
      | TokenIteration
      | TokenMeasure
      | TokenNotes
+     | TokenJournal
      | TokenString String
      | TokenMovements
      | TokenMovement
@@ -82,6 +83,7 @@ lexer ('d':'i':'s':'t':'a':'n':'c':'e':cs) = TokenDistance : lexer cs
 lexer ('e':'n':'d':cs) = TokenEnd : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':'c':'a':'p':cs) = TokenForTimeCap : lexer cs
 lexer ('f':'o':'r':'t':'i':'m':'e':cs) = TokenForTime : lexer cs
+lexer ('j':'o':'u':'r':'n':'a':'l':cs) = TokenJournal : lexer cs
 lexer ('n':'o':'n':'e':cs) = TokenNone : lexer cs
 lexer ('T':'r':'a':'i':'n':'i':'n':'g':'D':'a':'y':cs) = TokenTrainingDay : lexer cs
 lexer ('s':'e':'t':'s':cs) = TokenSets : lexer cs
@@ -102,7 +104,7 @@ lexer ('r':'e':'p':'s':cs) = TokenReps : lexer cs
 lexer ('r':'p':'e':cs) = TokenRPE : lexer cs
 lexer ('w':'e':'i':'g':'h':'t':cs) = TokenWeight : lexer cs
 lexer ('s':'u':'b':'m':'o':'v':'e':'m':'e':'n':'t':'s':cs) = TokenSubmovements : lexer cs
-lexer cs = error $ "Lexing Error: Unrecognized symbol"++cs
+lexer cs = error $ "Lexing Error: Unrecognized symbol: "++cs
 
 lexString :: String -> [Token]
 lexString cs = case r of
