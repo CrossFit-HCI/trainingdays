@@ -31,6 +31,7 @@ dependencies:
 - directory
 - transformers
 - exceptions
+- filepath
 
 ghc-options:
 - -Wall

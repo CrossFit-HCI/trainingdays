@@ -122,11 +122,12 @@ module Database where
             createNewId :: Action IO Value
             createNewId = insert "athletes" athleteDoc
 
-    selectInsert :: (MonadIO m, MonadFail m) => Collection -> String -> Document -> Action m Value
+    selectInsert :: Collection -> String -> Document -> Action IO Value
     -- ^ Determines if `doc` is already in the database by selecting on `key`,
     -- and if it doesn't exist, then inserts it, but if it does exist, updates
     -- every field besides `key`. Throws an exception if `key` doesn't exist in `doc`.
     selectInsert col key doc = do
+        liftIO . print $ doc
         let descMaybe = (lookup (pack key) doc :: Maybe String)
         case descMaybe of
             Nothing -> error $ "selectInsert: failed to find key "++key
@@ -136,7 +137,7 @@ module Database where
                     Nothing -> insert col doc
                     Just d -> upsert (select [pack key =: desc] col) doc >> look (pack "_id") d
 
-    selectInsertAll :: (MonadIO m, MonadFail m) => (a -> Action m Document) -> Collection -> String -> [a] -> Action m [Value]
+    selectInsertAll :: (a -> Action IO Document) -> Collection -> String -> [a] -> Action IO [Value]
     -- ^ Like `selectInsert` but over a list of objects to be inserted.
     selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 

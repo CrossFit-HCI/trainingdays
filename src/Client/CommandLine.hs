@@ -10,7 +10,7 @@ module Client.CommandLine where
         ( returnError,
           outputStrLn,
           outputStr,
-          Error(ParseError), runResultST, liftResult, ResultST )
+          Error(..), runResultST, liftResult, ResultST )
 
     import System.Console.Haskeline
         ( Settings(Settings, autoAddHistory, complete, historyFile),
@@ -19,8 +19,7 @@ module Client.CommandLine where
           completeFilename,
           getInputLine )
 
-    import Control.Monad
-        ( void )
+    import Control.Monad ( void, unless )
 
     import Data.Bifunctor
         ( second )
@@ -31,12 +30,16 @@ module Client.CommandLine where
 
     import Database.MongoDB.Connection
         (Pipe)
-    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selsertAthleteId, runAction, maybeValue)
+    import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selsertAthleteId, runAction, maybeValue, trainingJournalToDoc, selectInsert)
 
     import qualified Data.Text as T
 
     import System.Directory (doesFileExist)
 
+    import System.FilePath (isExtensionOf)
+
+    import Client.TDMLParser (parse)
+    
     -- | The type of the command lines global state. It contains the
     -- `FilePath` to the configuration file, the parsed contents of
     -- the configuration file, and the id of the athlete being
@@ -75,7 +78,7 @@ module Client.CommandLine where
     -- global store with the given `Config`.
     putConfig :: Config -> CmdLineResultST ()
     putConfig conf = do Store (f,_,v,p) <- get
-                        put $ Store (f,conf,v,p)   
+                        put $ Store (f,conf,v,p)
 
     -- | Replaces the connection pipe in the global store with the
     -- given `Pipe`.
@@ -100,20 +103,22 @@ module Client.CommandLine where
                       return $ maybeValue v
 
     data Command =
-          Quit                  -- ^ The quit command.
-        | ShowConfig            -- ^ The command for printing the 
-                                -- configuration file to the user.
-        | SetFirstName String   -- ^ The command for setting the first 
-                                -- name of the athlete being
-                                -- inspected.
-        | SetLastName String    -- ^ The command for setting the last
-                                -- name of the athlete being
-                                -- inspected.
-        | SetEmail String       -- ^ The command for setting the email 
-                                -- of the athlete being inspected.
-        | SetConnection String  -- ^ The command for setting the 
-                                -- connection string for MongoDB 
-                                -- Atlas.
+          Quit                      -- ^ The quit command.
+        | ShowConfig                -- ^ The command for printing the 
+                                    -- configuration file to the user.
+        | SetFirstName String       -- ^ The command for setting the first 
+                                    -- name of the athlete being
+                                    -- inspected.
+        | SetLastName String        -- ^ The command for setting the last
+                                    -- name of the athlete being
+                                    -- inspected.
+        | SetEmail String           -- ^ The command for setting the email 
+                                    -- of the athlete being inspected.
+        | SetConnection String      -- ^ The command for setting the 
+                                    -- connection string for MongoDB 
+                                    -- Atlas.
+        | InsertTDMLFile FilePath   -- ^ The command for inserting a TDML 
+                                    -- file.
         deriving (Show)
 
     -- | Parses a `Command` from a `String`. 
@@ -134,6 +139,9 @@ module Client.CommandLine where
         where
             mkShowCmd "config" = Just ShowConfig
             mkShowCmd _        = Nothing
+    parseCmd ('i':'n':'s':'e':'r':'t':' ':'d':'a':'y':' ':filePath) = do
+        unless (isExtensionOf ".tdml" filePath) Nothing
+        return $ InsertTDMLFile filePath
     parseCmd _ = Nothing
 
     -- | Returns the parameter of a `Command` that has one.
@@ -266,9 +274,9 @@ module Client.CommandLine where
             mConStr <- lookupProp "connection"
             just mConStr
               (\conStr -> do loggedIn <- authWithAtlas conStr
-                             if loggedIn 
+                             if loggedIn
                              then initAthleteId
-                             else outputStrLn "preprocess: Failed to authenticate with Atlas."                                                         
+                             else outputStrLn "preprocess: Failed to authenticate with Atlas."
               )
 
         authWithAtlas :: String -> CmdLineResultST Bool
@@ -287,7 +295,7 @@ module Client.CommandLine where
             else liftIO noConfFile
 
         initAthleteId :: ResultST Store ()
-        initAthleteId = do 
+        initAthleteId = do
             pipeM <- getPipe
             maybeCase pipeM
                 (outputStrLn "initAthleteId: hit an unreachable point where the pipe is not set in the state after authentication.")
@@ -295,7 +303,7 @@ module Client.CommandLine where
                              lastnameM <- lookupProp "lastname"
                              emailM <- lookupProp "email"
                              case (firstnameM, lastnameM, emailM) of
-                                (Just firstname, Just lastname, Just email) -> 
+                                (Just firstname, Just lastname, Just email) ->
                                     do aid <- liftIO . runAction pipe $ selsertAthleteId firstname lastname email
                                        putAthleteId aid
                                 _ -> liftIO noConfFile)
@@ -333,6 +341,23 @@ module Client.CommandLine where
         handleCommand (SetConnection s) = do
             lift $ writePropToConfFile (ConnectionString s)
             innerLoop
+        handleCommand (InsertTDMLFile fp) = do
+            lift $ handleInsertTDMLFile fp
+            innerLoop
+
+        handleInsertTDMLFile :: FilePath -> CmdLineResultST ()
+        handleInsertTDMLFile fp = do            
+            pipeM <- getPipe
+            aidM <- getAthleteId
+            maybeCase pipeM
+                (returnError $ DBError "handleInsertTDMLFile: failed to get the pipe from state.")
+                (\pipe -> maybeCase aidM
+                            (returnError $ DBError "handleInsertTDMLFile: failed to get the athlete id from state.")
+                            (\aid -> do trainingJournal <- liftIO $ parse fp
+                                        let act = trainingJournalToDoc aid trainingJournal
+                                        doc <- liftIO $ runAction pipe act
+                                        outputStrLn "Here"
+                                        void $ liftIO $ runAction pipe $ selectInsert (T.pack "training-journals") "athlete_id" doc))
 
         handleShowConfig :: CmdLineResultST ()
         handleShowConfig =
