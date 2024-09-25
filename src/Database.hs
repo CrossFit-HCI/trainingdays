@@ -6,6 +6,7 @@
 {-# HLINT ignore "Eta reduce" #-}
 {-# LANGUAGE LambdaCase #-}
 {-# HLINT ignore "Redundant $" #-}
+{-# HLINT ignore "Redundant bracket" #-}
 
 module Database where
     import Database.MongoDB
@@ -127,8 +128,8 @@ module Database where
     -- and if it doesn't exist, then inserts it, but if it does exist, updates
     -- every field besides `key`. Throws an exception if `key` doesn't exist in `doc`.
     selectInsert col key doc = do
-        liftIO . print $ doc
-        let descMaybe = (lookup (pack key) doc :: Maybe String)
+        liftIO . putStrLn $ "selectInsert: col:"++(show col)++" key:"++key++" doc:"++(show doc)
+        let descMaybe = (lookup (pack key) doc :: Maybe Value)
         case descMaybe of
             Nothing -> error $ "selectInsert: failed to find key "++key
             Just desc -> do
@@ -217,8 +218,10 @@ module Database where
 
     measureToIdValue :: Measure -> Action IO Document
     measureToIdValue m = do
+        liftIO $ putStrLn "measureToIdValue"
         let v = measureToValue m
         id <- selectInsert "measure" "description" (measureToDoc m)
+        liftIO $ putStrLn "measureToDoc"
         return ["id" =: id, "value" =: v]
 
     measureToIdValueMany :: [Measure] -> Action IO [Document]
@@ -267,8 +270,12 @@ module Database where
             ]
 
     blockMeasureToIdValue :: BlockMeasure -> Action IO Document
-    blockMeasureToIdValue Nothing = return []
-    blockMeasureToIdValue (Just m) = measureToIdValue m
+    blockMeasureToIdValue bm = do
+        liftIO . putStrLn $ "blockMeasureToIdValue: " ++ (show bm)
+        blockMeasureToIdValue' bm
+        where 
+            blockMeasureToIdValue' Nothing = return []
+            blockMeasureToIdValue' (Just m) = measureToIdValue m
 
     blockIterationToValue :: BlockIteration -> Value
     blockIterationToValue (Amrap t) = val $ timeToDoc t
@@ -279,12 +286,15 @@ module Database where
 
     blockIterationToIdValue :: BlockIteration -> Action IO Document
     blockIterationToIdValue b = do
+        liftIO $ putStrLn "blockIterationToIdValue"
         let v = blockIterationToValue b
         id <- selectInsert "block-iteration" "description" (blockIterationToDoc b)
+        liftIO $ putStrLn "blockIterationToDoc"
         return ["id" =: id, "value" =: v]
 
     subblockToDoc :: Subblock -> Action IO Document
     subblockToDoc (Subblock subblockId subblockIteration subblockMeasure subblockNotes subblockMovements) = do
+        liftIO $ putStrLn "subblockToDoc"
         movements <- mapM subblockMovementToDoc subblockMovements
         measureDoc <- blockMeasureToIdValue subblockMeasure
         iterationDoc <- blockIterationToIdValue subblockIteration
@@ -298,6 +308,7 @@ module Database where
 
     blockToDoc :: Block -> Action IO Document
     blockToDoc (Block blockId blockIteration blockMeasure blockNotes subblocks) = do
+        liftIO $ putStrLn "blockToDoc"
         iterationDoc <- blockIterationToIdValue blockIteration
         measureDoc <- blockMeasureToIdValue blockMeasure
         subblocksDoc <- mapM subblockToDoc subblocks
@@ -316,14 +327,16 @@ module Database where
 
     trainingDayToDoc :: Value -> TrainingDay -> Action IO Document
     trainingDayToDoc athleteId (TrainingDay date cycle blocks) = do
-        blocksDoc <- mapM blockToDoc blocks
+        liftIO $ putStrLn "trainingDayToDoc"
+        blocksDoc <- mapM blockToDoc blocks        
         return ["athlete_id" =: athleteId,
                 "date" =: dateToDoc date,
                 "cycle" =: cycleToDoc cycle,
                 "blocks" =: blocksDoc]
 
     trainingDayToId :: Value -> TrainingDay -> Action IO Value
-    trainingDayToId athleteId trainingDay =
+    trainingDayToId athleteId trainingDay = do
+        liftIO $ putStrLn "trainingDayToId"
         trainingDayToDoc athleteId trainingDay >>= selectInsert "training-days" "athlete_id"
 
     trainingJournalToDoc :: Value -> TrainingJournal -> Action IO Document
