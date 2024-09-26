@@ -44,6 +44,9 @@ ghc-options:
 - -Wpartial-fields
 - -Wredundant-constraints
 
+cpp-options:
+- -DDEBUG
+
 library:
   source-dirs: src
 

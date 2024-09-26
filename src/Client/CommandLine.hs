@@ -40,11 +40,11 @@ module Client.CommandLine where
 
     import Client.TDMLParser (parse)
     
-    -- | The type of the command lines global state. It contains the
-    -- `FilePath` to the configuration file, the parsed contents of
-    -- the configuration file, and the id of the athlete being
-    -- inspected.
-    newtype Store = Store (FilePath, [Property], Value, Maybe Pipe)
+    -- | The type of the command lines global state. It contains the `FilePath`
+    -- to the configuration file, the parsed contents of the configuration file,
+    -- the id of the athlete being inspected, the database connection (pipe),
+    -- and a flag to toggle debugging.
+    newtype Store = Store (FilePath, [Property], Value, Maybe Pipe, Bool)
 
     -- | The type of our results; that is, the return type of all
     -- computations requiring the global state and error tracking.
@@ -54,53 +54,64 @@ module Client.CommandLine where
     -- respective "empty" value except for the file path which can be
     -- passed in.
     initStore :: FilePath -> Store
-    initStore fp = Store (fp,[],Null,Nothing)
+    initStore fp = Store (fp,[],Null,Nothing,False)
 
     -- | Returns the path to the configuration file from the global
     -- store.
     getConfigFilePath :: CmdLineResultST FilePath
-    getConfigFilePath = do Store (fp,_,_,_) <- get
+    getConfigFilePath = do Store (fp,_,_,_,_) <- get
                            return fp
 
     -- | Replaces the path to the configuration file in the global
     -- store with the given file path.
     putConfigFilePath :: FilePath -> CmdLineResultST ()
-    putConfigFilePath fp = do Store (_,c,v,p) <- get
-                              put $ Store (fp,c,v,p)
+    putConfigFilePath fp = do Store (_,c,v,p,d) <- get
+                              put $ Store (fp,c,v,p,d)
 
     -- | Returns the parsed contents of the configuration file saved
     -- in the global store.
     getConfig :: CmdLineResultST Config
-    getConfig = do Store (_,conf,_,_) <- get
+    getConfig = do Store (_,conf,_,_,_) <- get
                    return conf
 
     -- | Replaces the parsed contents of the configuration file in the
     -- global store with the given `Config`.
     putConfig :: Config -> CmdLineResultST ()
-    putConfig conf = do Store (f,_,v,p) <- get
-                        put $ Store (f,conf,v,p)
+    putConfig conf = do Store (f,_,v,p,d) <- get
+                        put $ Store (f,conf,v,p,d)
 
     -- | Replaces the connection pipe in the global store with the
     -- given `Pipe`.
     putPipe :: Pipe -> CmdLineResultST ()
-    putPipe pipe = do Store (f,c,v,_) <- get
-                      put $ Store (f,c,v,Just pipe)
+    putPipe pipe = do Store (f,c,v,_,d) <- get
+                      put $ Store (f,c,v,Just pipe,d)
 
     -- | Returns the pipe saved in the global store.
     getPipe :: CmdLineResultST (Maybe Pipe)
-    getPipe = do Store (_,_,_,pipe) <- get
+    getPipe = do Store (_,_,_,pipe,_) <- get
                  return pipe
 
     -- | Replaces the athlete id in the global store with the
     -- given `Value`.
     putAthleteId :: Value -> CmdLineResultST ()
-    putAthleteId aid = do Store (f,c,_,pipe) <- get
-                          put $ Store (f,c,aid,pipe)
+    putAthleteId aid = do Store (f,c,_,pipe,d) <- get
+                          put $ Store (f,c,aid,pipe,d)
 
     -- | Returns the athlete id saved in the global store.
     getAthleteId :: CmdLineResultST (Maybe Value)
-    getAthleteId = do Store (_,_,v,_) <- get
+    getAthleteId = do Store (_,_,v,_,_) <- get
                       return $ maybeValue v
+
+    -- | Replaces the debugging-mode toggle in the global store with the given
+    -- `Value`.
+    putDebug :: Bool -> CmdLineResultST ()
+    putDebug d = do Store (f,c,aid,pipe,_) <- get
+                    put $ Store (f,c,aid,pipe,d)
+
+    -- | Returns the debugging-mode toggle saved in the global store.
+    getDebug :: CmdLineResultST Bool
+    getDebug = do Store (_,_,_,_,d) <- get
+                  return d
 
     data Command =
           Quit                      -- ^ The quit command.
@@ -117,6 +128,7 @@ module Client.CommandLine where
         | SetConnection String      -- ^ The command for setting the 
                                     -- connection string for MongoDB 
                                     -- Atlas.
+        | SetDebug Bool             -- ^ Toggles debugging mode. 
         | InsertTDMLFile FilePath   -- ^ The command for inserting a TDML 
                                     -- file.
         deriving (Show)
@@ -133,6 +145,8 @@ module Client.CommandLine where
             mkSetCmd ("lastname", l)   = Just $ SetLastName l
             mkSetCmd ("email", e)      = Just $ SetEmail e
             mkSetCmd ("connection", s) = Just $ SetConnection s
+            mkSetCmd ("debug", "on")   = Just $ SetDebug True
+            mkSetCmd ("debug", "off")  = Just $ SetDebug False
             mkSetCmd _                 = Nothing
     parseCmd ('s':'h':'o':'w':' ':rest) =
         mkShowCmd . trimWhitespace $ rest
@@ -144,13 +158,17 @@ module Client.CommandLine where
         return $ InsertTDMLFile filePath
     parseCmd _ = Nothing
 
+    data CmdValue = Str String | Boolean Bool | None
+        deriving Show
+
     -- | Returns the parameter of a `Command` that has one.
-    cmdValue :: Command -> String
-    cmdValue (SetFirstName f)  = f
-    cmdValue (SetLastName l)   = l
-    cmdValue (SetEmail e)      = e
-    cmdValue (SetConnection s) = s
-    cmdValue _                 = ""
+    cmdValue :: Command -> CmdValue
+    cmdValue (SetFirstName f)  = Str f
+    cmdValue (SetLastName l)   = Str l
+    cmdValue (SetEmail e)      = Str e
+    cmdValue (SetConnection s) = Str s
+    cmdValue (SetDebug b)      = Boolean b
+    cmdValue _                 = None
 
     data Property =
           FirstName String         -- ^ The firstname property of the 
@@ -340,6 +358,9 @@ module Client.CommandLine where
             innerLoop
         handleCommand (SetConnection s) = do
             lift $ writePropToConfFile (ConnectionString s)
+            innerLoop
+        handleCommand (SetDebug d) = do   
+            lift $ putDebug d         
             innerLoop
         handleCommand (InsertTDMLFile fp) = do
             lift $ handleInsertTDMLFile fp
