@@ -347,3 +347,11 @@ trainingJournalToDoc athleteId (TrainingJournal title description training) = do
                 "description" =: pack description,
                 "training" =: trainingIds
             ]
+
+-- TODO:
+-- Add journal id to training-days collection. 
+-- Find journal id from title and add to training-day query below.
+selectTrainingDay :: Pipe -> Value -> String -> Date -> IO TrainingDay
+selectTrainingDay pipe aid journalTitle day = do
+    trd <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "date" =: dateToDoc day] "training-days"
+    undefined
