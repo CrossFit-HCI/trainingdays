@@ -43,7 +43,6 @@ ghc-options:
 - -Wmissing-home-modules
 - -Wpartial-fields
 - -Wredundant-constraints
-
 cpp-options:
 - -DDEBUG
 
