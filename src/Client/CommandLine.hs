@@ -377,7 +377,6 @@ module Client.CommandLine where
                             (\aid -> do trainingJournal <- liftIO $ parse fp
                                         let act = trainingJournalToDoc aid trainingJournal
                                         doc <- liftIO $ runAction pipe act
-                                        outputStrLn "Here"
                                         void $ liftIO $ runAction pipe $ selectInsert (T.pack "training-journals") "athlete_id" doc))
 
         handleShowConfig :: CmdLineResultST ()

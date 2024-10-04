@@ -172,22 +172,22 @@ targetToDoc target = ["description" =: targetToString target]
         targetToString (Target t) = t
 
 iterationToDoc :: MovementIteration -> Document
-iterationToDoc (IterateByReps r)= ["description" =: pack "reps", "value" =: r]
-iterationToDoc (IterateByDist d) = ["description" =: pack "distance", "value" =: d]
-iterationToDoc (IterateByCalories c) = ["description" =: pack "calories", "value" =: c]
+iterationToDoc (IterateByReps _)     = ["description" =: pack "reps"]
+iterationToDoc (IterateByDist _)     = ["description" =: pack "distance"]
+iterationToDoc (IterateByCalories _) = ["description" =: pack "calories"]
 
 scalerToDoc :: Scaler -> Document
-scalerToDoc (ScaleDistance d) = ["description" =: pack "distance", "value" =: d]
-scalerToDoc (ScaleWeight w) = ["description" =: pack "weight", "value" =: w]
-scalerToDoc (ScaleIncreaseRoundReps r) = ["description" =: pack "increase_round_reps", "value" =: r]
-scalerToDoc (ScaleRPE (low,high)) = ["description" =: pack "rpe", "value" =: ["low" =: low, "high" =: high]]
+scalerToDoc (ScaleDistance _)          = ["description" =: pack "distance"]
+scalerToDoc (ScaleWeight _)            = ["description" =: pack "weight"]
+scalerToDoc (ScaleIncreaseRoundReps _) = ["description" =: pack "increase_round_reps"]
+scalerToDoc (ScaleRPE _)               = ["description" =: pack "rpe"]
 
 measureToDoc :: Measure -> Document
 measureToDoc (MeasureRepetitions _) = ["description" =: pack "reps"]
-measureToDoc (MeasureTime _) = ["description" =: pack "time"]
-measureToDoc (MeasureDistance _) = ["description" =: pack "distance"]
-measureToDoc (MeasureCalories _) = ["description" =: pack "calories"]
-measureToDoc (MeasureWeight _) = ["description" =: pack "weight"]
+measureToDoc (MeasureTime _)        = ["description" =: pack "time"]
+measureToDoc (MeasureDistance _)    = ["description" =: pack "distance"]
+measureToDoc (MeasureCalories _)    = ["description" =: pack "calories"]
+measureToDoc (MeasureWeight _)      = ["description" =: pack "weight"]
 
 movementToDoc :: Movement -> Action IO Document
 movementToDoc (Movement description notes labels targets _ _ _ submovements) = do
@@ -203,11 +203,11 @@ movementToDoc (Movement description notes labels targets _ _ _ submovements) = d
         ]
 
 blockIterationToDoc :: BlockIteration -> Document
-blockIterationToDoc (Amrap t) = ["description" =: pack "amrap", "value" =: timeToDoc t]
-blockIterationToDoc ForTime = ["description" =: pack "for time", "value" =: pack "none"]
-blockIterationToDoc (ForTimeCap t) = ["description" =: pack "for time cap", "value" =: timeToDoc t]
-blockIterationToDoc (Sets s) = ["description" =: pack "sets", "value" =: s]
-blockIterationToDoc NoBlockIteration = ["description" =: pack "none", "value" =: pack "none"]
+blockIterationToDoc (Amrap _) = ["description" =: pack "amrap"]
+blockIterationToDoc ForTime = ["description" =: pack "for time"]
+blockIterationToDoc (ForTimeCap _) = ["description" =: pack "for time cap"]
+blockIterationToDoc (Sets _) = ["description" =: pack "sets"]
+blockIterationToDoc NoBlockIteration = ["description" =: pack "none"]
 
 measureToValue :: Measure -> Value
 measureToValue (MeasureRepetitions r) = val r
