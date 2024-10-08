@@ -157,6 +157,12 @@ selectInsertAll :: (a -> Action IO Document) -> Collection -> String -> [a] -> A
 -- ^ Like `selectInsert` but over a list of objects to be inserted.
 selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 
+selectTrainingDay :: Pipe -> Value -> String -> Date -> IO TrainingDay
+selectTrainingDay pipe aid journalTitle day = do
+    trJournalM <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "title" =: journalTitle] "training-journals"
+    -- Look up the correct training day from trJournal's training id's, can I use an aggregate?
+    undefined
+
 ---------------------------
 -- Data Model Conversion --  
 ---------------------------
@@ -337,8 +343,8 @@ cycleToDoc :: Maybe TrainingCycle -> Document
 cycleToDoc Nothing = ["description" =: pack "none", "value" =: pack "none"]
 cycleToDoc (Just (TrainingCycle start end length)) =
     ["start-date" =: dateToDoc start,
-        "end-date" =: dateToDoc end,
-        "length" =: length]
+     "end-date" =: dateToDoc end,
+     "length" =: length]
 
 trainingDayToDoc :: Value -> TrainingDay -> Action IO Document
 trainingDayToDoc athleteId (TrainingDay date cycle blocks) = do
@@ -358,13 +364,7 @@ trainingJournalToDoc :: Value -> TrainingJournal -> Action IO Document
 trainingJournalToDoc athleteId (TrainingJournal title description training) = do
     trainingIds <- mapM (trainingDayToId athleteId) training
     return [ "athlete_id" =: athleteId,
-                "title" =: pack title,
-                "description" =: pack description,
-                "training" =: trainingIds
+             "title" =: pack title,
+             "description" =: pack description,
+             "training" =: trainingIds
             ]
-
-selectTrainingDay :: Pipe -> Value -> String -> Date -> IO TrainingDay
-selectTrainingDay pipe aid journalTitle day = do
-    trJournalM <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "title" =: journalTitle] "training-journals"
-    -- Look up the correct training day from trJournal's training id's, can I use an aggregate?
-    undefined
