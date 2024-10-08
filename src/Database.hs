@@ -123,20 +123,35 @@ selsertAthleteId firstname lastname email = do
         createNewId :: Action IO Value
         createNewId = insert "athletes" athleteDoc
 
+selectKeysInsert :: Collection -> [String] -> Document -> Action IO Value
+-- ^ Determines if `doc` is already in the database by selecting on the keys in
+-- `keys`, and if it doesn't exist, then inserts it otherwise it is updated.
+-- Throws an exception if any of the keys don't exist in `doc`.
+selectKeysInsert col keys doc = do
+    liftIO . debug $ "selectKeysInsert: col:"++(show col)++" keys:"++(show keys)++" doc:"++(show doc)
+    let keysDoc = mkKeysDoc keys
+    query <- findOne $ select keysDoc col
+    maybeCase query
+        (insert col doc)
+        (\d -> upsert (select keysDoc col) doc >> look (pack "_id") d)
+    where
+        mkKeysDoc :: [String] -> Document
+        mkKeysDoc keys = foldr mkKeyDoc [] keys
+            
+        mkKeyDoc :: String -> Document -> Document
+        mkKeyDoc key r = do
+            let descMaybe = (lookup (pack key) doc :: Maybe Value)
+            maybeCase descMaybe 
+                (error $ "selectInsert: failed to find key "++key)
+                (\desc -> (pack key =: desc):r)
+
 selectInsert :: Collection -> String -> Document -> Action IO Value
 -- ^ Determines if `doc` is already in the database by selecting on `key`,
 -- and if it doesn't exist, then inserts it, but if it does exist, updates
 -- every field besides `key`. Throws an exception if `key` doesn't exist in `doc`.
 selectInsert col key doc = do
     liftIO . debug $ "selectInsert: col:"++(show col)++" key:"++key++" doc:"++(show doc)
-    let descMaybe = (lookup (pack key) doc :: Maybe Value)
-    case descMaybe of
-        Nothing -> error $ "selectInsert: failed to find key "++key
-        Just desc -> do
-            query <- findOne $ select [pack key =: desc] col
-            case query of
-                Nothing -> insert col doc
-                Just d -> upsert (select [pack key =: desc] col) doc >> look (pack "_id") d
+    selectKeysInsert col [key] doc
 
 selectInsertAll :: (a -> Action IO Document) -> Collection -> String -> [a] -> Action IO [Value]
 -- ^ Like `selectInsert` but over a list of objects to be inserted.
@@ -348,10 +363,8 @@ trainingJournalToDoc athleteId (TrainingJournal title description training) = do
                 "training" =: trainingIds
             ]
 
--- TODO:
--- Add journal id to training-days collection. 
--- Find journal id from title and add to training-day query below.
 selectTrainingDay :: Pipe -> Value -> String -> Date -> IO TrainingDay
 selectTrainingDay pipe aid journalTitle day = do
-    trd <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "date" =: dateToDoc day] "training-days"
+    trJournalM <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "title" =: journalTitle] "training-journals"
+    -- Look up the correct training day from trJournal's training id's, can I use an aggregate?
     undefined
