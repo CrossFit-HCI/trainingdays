@@ -2,11 +2,12 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Utils where
     
-import Data.Char 
-    ( isSpace )
+import Data.Char
+    ( isSpace, isNumber )
 
 import Data.List
     ( dropWhileEnd )
@@ -53,3 +54,11 @@ maybeCase = flip $ \n -> flip (maybe n)
 just :: Monad m => Maybe a -> (a -> m ()) -> m ()
 just Nothing _ = return ()
 just (Just x) f = f x
+
+isDouble :: String -> Bool
+isDouble s = isDouble' (break (=='.') s) 
+    where
+        isDouble' :: (String,String) -> Bool
+        isDouble' ("", _) = False
+        isDouble' (d1,"") = all isNumber d1
+        isDouble' (d1,tail -> d2) = (d2 /= "") && (all isNumber d1) && (all isNumber d2)

@@ -39,6 +39,8 @@ module Client.CommandLine where
     import System.FilePath (isExtensionOf)
 
     import Client.TDMLParser (parse)
+
+    import Nutrition.MacroCalculator (macroCalculator)
     
     -- | The type of the command lines global state. It contains the `FilePath`
     -- to the configuration file, the parsed contents of the configuration file,
@@ -131,12 +133,15 @@ module Client.CommandLine where
         | SetDebug Bool             -- ^ Toggles debugging mode. 
         | InsertTDMLFile FilePath   -- ^ The command for inserting a TDML 
                                     -- file.
+        | CalculateMacros           -- ^ The command to calculate an 
+                                    -- athlete's macros.
         deriving (Show)
 
     -- | Parses a `Command` from a `String`. 
     -- A parse error is indicated by `Nothing`.
-    parseCmd :: String -> Maybe Command
+    parseCmd :: String -> Maybe Command    
     parseCmd "quit" = Just Quit
+    parseCmd "calculate macros" = Just CalculateMacros
     parseCmd ('s':'e':'t':' ':rest) =
         mkSetCmd . (second trimWhitespace) $
             break (== ' ') $ trimWhitespace rest
@@ -364,6 +369,9 @@ module Client.CommandLine where
             innerLoop
         handleCommand (InsertTDMLFile fp) = do
             lift $ handleInsertTDMLFile fp
+            innerLoop
+        handleCommand CalculateMacros = do
+            liftIO macroCalculator
             innerLoop
 
         handleInsertTDMLFile :: FilePath -> CmdLineResultST ()
