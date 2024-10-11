@@ -30,7 +30,7 @@ import Control.Monad.State
 
 import Database.MongoDB.Connection
     (Pipe)
-import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selsertAthleteId, runAction, maybeValue, trainingJournalToDoc, selectKeysInsert)
+import Database (extractMongoAtlasCredentials, connectAtlas, atlas_host, atlas_user, atlas_password, authAtlas, selsertAthleteId, runAction, maybeValue, trainingJournalToDoc, selectKeysInsert, selectTrainingDay)
 
 import qualified Data.Text as T
 
@@ -41,6 +41,7 @@ import System.FilePath (isExtensionOf)
 import Client.TDMLParser (parse)
 
 import Nutrition.MacroCalculator (macroCalculator)
+import DataModel (Date(..))
 
 -- | The type of the command lines global state. It contains the `FilePath`
 -- to the configuration file, the parsed contents of the configuration file,
@@ -116,7 +117,7 @@ getDebug = do Store (_,_,_,_,d) <- get
               return d
 
 data Command =
-        Quit                      -- ^ The quit command.
+        Quit                    -- ^ The quit command.
     | ShowConfig                -- ^ The command for printing the 
                                 -- configuration file to the user.
     | SetFirstName String       -- ^ The command for setting the first 
@@ -133,6 +134,8 @@ data Command =
     | SetDebug Bool             -- ^ Toggles debugging mode. 
     | InsertTDMLFile FilePath   -- ^ The command for inserting a TDML 
                                 -- file.
+    | GetTrainingDay String     -- ^ The command to retrieve a 
+                                -- training day from the database.
     | CalculateMacros           -- ^ The command to calculate an 
                                 -- athlete's macros.
     deriving (Show)
@@ -142,6 +145,12 @@ data Command =
 parseCmd :: String -> Maybe Command    
 parseCmd "quit" = Just Quit
 parseCmd "calculate macros" = Just CalculateMacros
+parseCmd ('g':'e':'t':' ':rest) = 
+    mkGetCmd . (second trimWhitespace) $
+        break (== ' ') $ trimWhitespace rest
+    where
+        mkGetCmd ("day", d)  = Just $ GetTrainingDay d
+        mkGetCmd _ = Nothing
 parseCmd ('s':'e':'t':' ':rest) =
     mkSetCmd . (second trimWhitespace) $
         break (== ' ') $ trimWhitespace rest
@@ -173,6 +182,7 @@ cmdValue (SetLastName l)   = Str l
 cmdValue (SetEmail e)      = Str e
 cmdValue (SetConnection s) = Str s
 cmdValue (SetDebug b)      = Boolean b
+cmdValue (GetTrainingDay d) = Str d
 cmdValue _                 = None
 
 isQuit :: Command -> Bool
@@ -180,18 +190,18 @@ isQuit Quit = True
 isQuit _ = False
 
 data Property =
-        FirstName String         -- ^ The firstname property of the 
-                                -- athlete being inspected stored in the
-                                -- configuration file.
+      FirstName String         -- ^ The firstname property of the 
+                               -- athlete being inspected stored in the
+                               -- configuration file.
     | LastName String          -- ^ The lastname property of the 
-                                -- athlete being inspected stored in the
-                                -- configuration file.
+                               -- athlete being inspected stored in the
+                               -- configuration file.
     | Email String             -- ^ The email property of the 
-                                -- athlete being inspected stored in the
-                                -- configuration file.
+                               -- athlete being inspected stored in the
+                               -- configuration file.
     | AthleteID String         -- ^ The athlete-id property of the 
-                                -- athlete being inspected stored in the
-                                -- configuration file.
+                               -- athlete being inspected stored in the
+                               -- configuration file.
     | ConnectionString String  -- ^ The MongoDB Atlas connection string.        
     deriving (Show)
 
@@ -367,11 +377,23 @@ handleCommand (SetEmail e) = do
 handleCommand (SetConnection s) = do
     lift $ writePropToConfFile (ConnectionString s)
 handleCommand (SetDebug d) = do   
-    lift $ putDebug d         
+    lift $ putDebug d
+handleCommand (GetTrainingDay date) = 
+    lift $ handleGetTrainingDay date
 handleCommand (InsertTDMLFile fp) = do
     lift $ handleInsertTDMLFile fp
 handleCommand CalculateMacros = do
     liftIO macroCalculator
+
+handleGetTrainingDay :: String -> CmdLineResultST ()
+handleGetTrainingDay date = do
+    pipeM <- getPipe
+    aidM <- getAthleteId
+    maybeCase pipeM
+        (returnError $ DBError "handleInsertTDMLFile: failed to get the pipe from state.")
+        (\pipe -> maybeCase aidM
+                    (returnError $ DBError "handleInsertTDMLFile: failed to get the athlete id from state.")
+                    (\aid -> do void $ liftIO $ selectTrainingDay pipe aid "CrossFit Training" (Date 23 2 2024)))
 
 handleInsertTDMLFile :: FilePath -> CmdLineResultST ()
 handleInsertTDMLFile fp = do            

@@ -159,14 +159,15 @@ selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 
 selectTrainingDay :: Pipe -> Value -> String -> Date -> IO (Maybe TrainingDay)
 selectTrainingDay pipe aid journalTitle day = do
-    trJournalM <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "title" =: journalTitle] "training-journals"
-    maybeCase trJournalM
-        (return Nothing)
-        (\tdJournalDoc -> let trainingDayIdsM = (lookup (pack "training") tdJournalDoc :: Maybe [Value])
-                           in maybeCase trainingDayIdsM 
-                                (return Nothing)
-                                (\trainingDayIds -> do dayDocs <- runAction pipe $ aggregate "training-days" [["$match" =: ["_id" =: ["$in" =: Array trainingDayIds]]]]
-                                                       undefined))
+    trdDoc <- runAction pipe $ aggregate "training-journals" [
+            ["$match" =: ["athlete_id" =: aid, "title" =: journalTitle]], 
+            ["$lookup" =: ["from" =: pack "training-days", "localField" =: pack "training", "foreignField" =: pack "_id", "as" =: pack "training_days"]],
+            ["$unwind" =: pack "$training_days"],
+            ["$match" =: ["training_days.date" =: dateToDoc day]],
+            ["$replaceRoot" =: ["newRoot" =: pack "$training_days"]]
+        ]    
+    debug . show $ trdDoc
+    return Nothing
 
 ---------------------------
 -- Data Model Conversion --  
