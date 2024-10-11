@@ -27,7 +27,7 @@ import Database.MongoDB
     upsert,
     Val(val),
     primary,
-    secondaryOk, aggregate )
+    secondaryOk, aggregate, Field )
 import Data.Text (pack, unpack)
 import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -157,15 +157,18 @@ selectInsertAll :: (a -> Action IO Document) -> Collection -> String -> [a] -> A
 -- ^ Like `selectInsert` but over a list of objects to be inserted.
 selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 
+aggregateDocsFromIds :: String -> [Field] -> String -> String -> [Field] -> Action IO [Document]
+aggregateDocsFromIds sourceCol sourceFilterCriteria idsField targetCol targetFilterCriteria = aggregate (pack sourceCol) [
+            ["$match" =: sourceFilterCriteria], 
+            ["$lookup" =: ["from" =: pack targetCol, "localField" =: pack idsField, "foreignField" =: pack "_id", "as" =: pack targetCol]],
+            ["$unwind" =: pack ("$"++targetCol)],
+            ["$match" =: targetFilterCriteria],
+            ["$replaceRoot" =: ["newRoot" =: pack ("$"++targetCol)]]
+    ]
+
 selectTrainingDay :: Pipe -> Value -> String -> Date -> IO (Maybe TrainingDay)
-selectTrainingDay pipe aid journalTitle day = do
-    trdDoc <- runAction pipe $ aggregate "training-journals" [
-            ["$match" =: ["athlete_id" =: aid, "title" =: journalTitle]], 
-            ["$lookup" =: ["from" =: pack "training-days", "localField" =: pack "training", "foreignField" =: pack "_id", "as" =: pack "training_days"]],
-            ["$unwind" =: pack "$training_days"],
-            ["$match" =: ["training_days.date" =: dateToDoc day]],
-            ["$replaceRoot" =: ["newRoot" =: pack "$training_days"]]
-        ]    
+selectTrainingDay pipe aid journalTitle date = do
+    trdDoc <- runAction pipe $ aggregateDocsFromIds "training-journals" ["athlete_id" =: aid, "title" =: journalTitle] "training" "training-days" ["training-days.date" =: dateToDoc date] 
     debug . show $ trdDoc
     return Nothing
 
@@ -183,8 +186,8 @@ timeToDoc (Time hours minutes seconds milliseconds) =
 dateToDoc :: Date -> Document
 dateToDoc (Date day month year) =
     [ "day" =: day,
-        "month" =: month,
-        "year" =: year ]
+      "month" =: month,
+      "year" =: year ]
 
 labelToDoc :: Label -> Document
 labelToDoc label = ["description" =: labelToString label]
