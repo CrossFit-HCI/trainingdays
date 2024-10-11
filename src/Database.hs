@@ -27,7 +27,7 @@ import Database.MongoDB
     upsert,
     Val(val),
     primary,
-    secondaryOk )
+    secondaryOk, aggregate )
 import Data.Text (pack, unpack)
 import DataModel (TrainingDay (..), Block (..), BlockIteration (..), Subblock (..), Movement (..), Label (Tag), Target (..), MovementIteration (..), Scaler (..), Measure (..), Date (..), Time (..), BlockMeasure, TrainingCycle (..), TrainingJournal (..))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -137,7 +137,7 @@ selectKeysInsert col keys doc = do
     where
         mkKeysDoc :: [String] -> Document
         mkKeysDoc keys = foldr mkKeyDoc [] keys
-            
+        
         mkKeyDoc :: String -> Document -> Document
         mkKeyDoc key r = do
             let descMaybe = (lookup (pack key) doc :: Maybe Value)
@@ -157,11 +157,16 @@ selectInsertAll :: (a -> Action IO Document) -> Collection -> String -> [a] -> A
 -- ^ Like `selectInsert` but over a list of objects to be inserted.
 selectInsertAll toDoc col key objs = mapM (toDoc >=> selectInsert col key) objs
 
-selectTrainingDay :: Pipe -> Value -> String -> Date -> IO TrainingDay
+selectTrainingDay :: Pipe -> Value -> String -> Date -> IO (Maybe TrainingDay)
 selectTrainingDay pipe aid journalTitle day = do
     trJournalM <- runAction pipe $ findOne $ select ["athlete_id" =: aid, "title" =: journalTitle] "training-journals"
-    -- Look up the correct training day from trJournal's training id's, can I use an aggregate?
-    undefined
+    maybeCase trJournalM
+        (return Nothing)
+        (\tdJournalDoc -> let trainingDayIdsM = (lookup (pack "training") tdJournalDoc :: Maybe [Value])
+                           in maybeCase trainingDayIdsM 
+                                (return Nothing)
+                                (\trainingDayIds -> do dayDocs <- runAction pipe $ aggregate "training-days" [["$match" =: ["_id" =: ["$in" =: Array trainingDayIds]]]]
+                                                       undefined))
 
 ---------------------------
 -- Data Model Conversion --  
